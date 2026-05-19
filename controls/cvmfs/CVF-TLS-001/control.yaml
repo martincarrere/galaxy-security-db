@@ -1,0 +1,71 @@
+id: CVF-TLS-001
+component: cvmfs
+category: crypto-transit
+title: "CVMFS confidential repositories must fetch over HTTPS with an authorization helper configured"
+description: |
+  Verifies that repositories whose content is confidential are configured to
+  use HTTPS URLs for all transport (Stratum 1 servers, HTTP proxies) and that an
+  authorization helper (authz) is configured to authenticate clients before content
+  is delivered. CVMFS uses plain HTTP by default because integrity is guaranteed by
+  signed manifests; but this provides no confidentiality. Any network observer can
+  see which files a client fetches and reconstruct content without HTTPS. For public
+  scientific repositories, HTTP is intentional; for confidential data, HTTPS plus
+  authz is required.
+
+severity: medium
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "CernVM-FS — Security Deep Dive"
+    url: "https://cvmfs.readthedocs.io/en/stable/apx-security.html"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "**/etc/cvmfs/default.local"
+    - "**/etc/cvmfs/config.d/*.conf"
+    - "**/etc/cvmfs/repositories.d/*.conf"
+    - "**/cvmfs/*.conf"
+  prompt: |
+    For repositories classified as confidential, verify HTTPS transport and
+    authz helper configuration.
+
+    COMPLIANT if:
+      - CVMFS_SERVER_URL and CVMFS_HTTP_PROXY for confidential repositories
+        use https:// scheme.
+      - CVMFS_AUTHZ_HELPER is configured with an appropriate authorization
+        helper binary or script.
+      - Public repositories that are intentionally served over HTTP are
+        documented as such and confirmed non-confidential.
+
+    NON-COMPLIANT if:
+      - A repository handling confidential data has CVMFS_SERVER_URL with
+        http:// scheme.
+      - HTTPS is configured but CVMFS_AUTHZ_HELPER is absent, leaving the
+        content accessible to any client that can reach the server.
+
+    NEEDS-HUMAN if:
+      - The confidentiality classification of each repository requires
+        input from the data owner — cannot be determined from config files alone.
+
+remediation:
+  summary: |
+    Change CVMFS_SERVER_URL to use https:// for confidential repositories.
+    Configure CVMFS_AUTHZ_HELPER to enforce client authentication.
+    Consult the CVMFS authorization helper documentation for the correct
+    helper binary for the authentication mechanism in use.
+  template: |
+    # /etc/cvmfs/config.d/confidential-repo.example.org.conf:
+    CVMFS_SERVER_URL=https://stratum1.example.org/cvmfs/confidential-repo
+    CVMFS_HTTP_PROXY=DIRECT
+    CVMFS_AUTHZ_HELPER=/usr/libexec/cvmfs/authz/cvmfs_helper_kerberos
+
+known_na_reasons:
+  - id: NA-001
+    reason: |
+      All repositories served by this deployment are public and contain
+      no confidential data — plain HTTP transport is intentional.
+    requires_evidence: |
+      Confirm that each repository's data classification permits public access.

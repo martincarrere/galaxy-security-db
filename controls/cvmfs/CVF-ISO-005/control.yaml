@@ -1,0 +1,68 @@
+id: CVF-ISO-005
+component: cvmfs
+category: isolation
+title: "CVMFS must use unprivileged user-namespace mounts where the kernel supports it"
+description: |
+  Verifies that CVMFS is deployed in unprivileged user-namespace mounting mode on
+  hosts running Linux 4.18 or later, eliminating the need for setuid helpers or
+  persistent privileged mounts for ordinary client usage. Setuid binaries widen
+  the host attack surface; each such binary is an exploitable target that can
+  yield elevated privileges if a vulnerability exists in its parsing or execution
+  path. Unprivileged mounts remove this attack surface where kernel support allows.
+
+severity: low
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "CernVM-FS — Security Deep Dive"
+    url: "https://cvmfs.readthedocs.io/en/stable/apx-security.html"
+    accessed_at: "2026-05-17"
+
+check:
+  type: human_review
+  globs:
+    - "**/etc/cvmfs/default.local"
+    - "**/*.service"
+  prompt: |
+    Verify that unprivileged user-namespace mounting is used where the kernel supports it.
+
+    COMPLIANT if:
+      - Host kernel version is 4.18 or later (uname -r) and user namespaces
+        are enabled (sysctl kernel.unprivileged_userns_clone = 1 or equivalent).
+      - /dev/fuse is accessible to the workload user.
+      - Optional cvmfs setuid helper binaries are not installed, or if installed,
+        are not required for ordinary client operation.
+
+    NON-COMPLIANT if:
+      - The kernel supports user-namespace mounts (4.18+) but the setuid helper
+        is still used for routine client mounts without documented justification.
+
+    NEEDS-HUMAN if:
+      - Kernel version and user-namespace support must be checked on the live host:
+        uname -r and sysctl kernel.unprivileged_userns_clone.
+      - The workload environment (container runtime, HPC batch system) may
+        have different constraints that prevent unprivileged mounts.
+
+remediation:
+  summary: |
+    On Linux 4.18+ hosts, ensure user namespaces are enabled and /dev/fuse is
+    accessible to the workload user. Avoid installing optional cvmfs setuid
+    binaries unless the workload specifically requires them.
+  template: |
+    # Check kernel version:
+    uname -r  # must be >= 4.18
+
+    # Enable user namespaces (if restricted):
+    sysctl -w kernel.unprivileged_userns_clone=1
+
+    # Check /dev/fuse permissions:
+    ls -l /dev/fuse  # must be accessible by workload user or group
+
+known_na_reasons:
+  - id: NA-001
+    reason: |
+      Host kernel is below 4.18 or runs in an environment where user
+      namespaces are disabled by policy (HPC, container-in-container).
+    requires_evidence: |
+      Confirm kernel version and any namespace restrictions.

@@ -1,0 +1,61 @@
+id: CVF-CRED-001
+component: cvmfs
+category: secrets
+title: "CVMFS repository master private key must be stored on a smart card or HSM"
+description: |
+  Verifies that the CVMFS repository master private key — which signs the whitelist
+  that authorizes all signing certificates — is stored in a PKCS#11-compatible
+  hardware token rather than as a plaintext file on disk. The master key is the
+  highest-value secret in the CVMFS trust model: its compromise lets an attacker
+  mint new signing identities at will and authorize forged content for any repository
+  under that master key, with no recovery path short of key rotation across all clients.
+
+severity: high
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "CernVM-FS — Security Deep Dive"
+    url: "https://cvmfs.readthedocs.io/en/stable/apx-security.html"
+    accessed_at: "2026-05-17"
+
+check:
+  type: human_review
+  globs:
+    - "**/*.masterkey"
+    - "**/masterkey*"
+    - "**/pkcs11*"
+  prompt: |
+    Review the publishing workflow for master key storage and usage.
+
+    COMPLIANT if:
+      - The whitelist re-signing workflow invokes a PKCS#11 smart card or HSM
+        provider (e.g., via openssl pkcs11 engine or cvmfs PKCS#11 integration)
+        rather than reading a .masterkey .pem file from disk.
+      - The master key custodian host is a dedicated, isolated machine.
+      - If a file-based fallback is used, the .masterkey file has mode 0400
+        owned by a dedicated isolated user, and access is strictly controlled.
+
+    NON-COMPLIANT if:
+      - The master private key is stored as a regular file accessible to the
+        repository owner or publisher accounts.
+      - No hardware token is in use and the key file has mode 0644 or broader.
+
+    NEEDS-HUMAN if:
+      - Master key storage requires inspecting the custodian host's key
+        management configuration — cannot be determined from repository files alone.
+
+remediation:
+  summary: |
+    Migrate the master key to a PKCS#11-compatible smart card or HSM.
+    Configure cvmfs_server whitelist signing to invoke the PKCS#11 provider.
+    If file-based storage is unavoidable, set mode 0400 on the .masterkey file
+    and restrict access to a dedicated isolated custodian account.
+  template: |
+    # File fallback — minimum protection:
+    chmod 0400 /etc/cvmfs/keys/<repo.example.org>.masterkey
+    chown cvmfs-custodian:cvmfs-custodian /etc/cvmfs/keys/<repo.example.org>.masterkey
+
+    # Preferred: invoke PKCS#11 provider for signing (site-specific configuration)
+
+known_na_reasons: []

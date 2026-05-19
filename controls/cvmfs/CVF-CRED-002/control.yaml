@@ -1,0 +1,66 @@
+id: CVF-CRED-002
+component: cvmfs
+category: secrets
+title: "CVMFS .cvmfswhitelist must be re-signed on a schedule before its expiry date"
+description: |
+  Verifies that a scheduled, automated job re-signs the .cvmfswhitelist before it
+  expires, and that the expiry period is tuned to balance operational overhead
+  against the window of exposure from a compromised whitelist. After a whitelist
+  expires, clients refuse it and halt repository updates — a self-inflicted
+  availability incident. A validity period set too long extends the window during
+  which a stolen whitelist could be exploited.
+
+severity: medium
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "CernVM-FS — Security Deep Dive"
+    url: "https://cvmfs.readthedocs.io/en/stable/apx-security.html"
+    accessed_at: "2026-05-17"
+
+check:
+  type: human_review
+  globs:
+    - "**/.cvmfswhitelist"
+    - "**/cron*"
+    - "**/systemd/system/*.timer"
+    - "**/*.timer"
+  prompt: |
+    Verify that the whitelist has a future expiry and that a scheduled re-signing
+    job is active.
+
+    COMPLIANT if:
+      - The E= (expiry) timestamp in .cvmfswhitelist is in the future and
+        at least 30 days remain before expiry.
+      - A systemd timer, cron job, or automation pipeline exists on the
+        master-key custodian host that re-signs the whitelist ahead of expiry.
+      - The re-signing job sends an alert if it fails.
+      - The whitelist validity period is at most 365 days (balancing overhead
+        against exposure window).
+
+    NON-COMPLIANT if:
+      - The whitelist expiry is in the past or within 7 days of expiry.
+      - No scheduled re-signing job is configured.
+
+    NEEDS-HUMAN if:
+      - The whitelist expiry must be read from the live Stratum 0:
+        head -5 /srv/cvmfs/<repo>/.cvmfswhitelist to find the E= line.
+      - The scheduled job exists but runs on a host not accessible for static review.
+
+remediation:
+  summary: |
+    Schedule a systemd timer or cron job to run cvmfs_server resign before
+    the current whitelist expires. Configure the job to alert on failure.
+    Set the validity period to no more than 365 days.
+  template: |
+    # Re-sign whitelist (run on master-key custodian):
+    cvmfs_server resign <repo.example.org>
+
+    # Example cron — run monthly, well before a 90-day validity period:
+    # 0 3 1 * * /usr/local/bin/cvmfs-resign.sh
+
+    # Inspect current expiry:
+    head -5 /srv/cvmfs/<repo.example.org>/.cvmfswhitelist
+
+known_na_reasons: []
