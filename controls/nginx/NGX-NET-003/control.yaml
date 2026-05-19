@@ -1,0 +1,78 @@
+id: NGX-NET-003
+component: nginx
+category: network
+title: "GeoIP-based access control must use a current MaxMind database with scheduled refresh"
+description: |
+  Verifies that the nginx GeoIP2 module is configured with a current MaxMind
+  database and that the database file is refreshed on a scheduled cadence.
+  An outdated GeoIP database produces incorrect country resolutions, causing
+  policy bypass (previously-blocked IPs in allowed countries) or false denials
+  (legitimate users misresolved to blocked regions). This control applies only
+  to deployments that implement geographic access restrictions.
+
+severity: low
+
+applicable_when:
+  deployment_modes: ["geoip-enabled"]
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "nginx Admin Guide — Controlling Access by GeoIP"
+    url: "https://docs.nginx.com/nginx/admin-guide/security-controls/controlling-access-by-geoip/"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "**/nginx.conf"
+    - "**/nginx/*.conf"
+    - "**/sites-available/*.conf"
+    - "**/conf.d/*.conf"
+    - "**/*.mmdb"
+    - "**/GeoLite2*"
+    - "**/geoip-update*"
+  prompt: |
+    Inspect GeoIP2 module configuration for database freshness and policy enforcement.
+
+    COMPLIANT if:
+      - ngx_http_geoip2_module is loaded and geoip2 directives reference a
+        MaxMind .mmdb file that exists.
+      - The .mmdb file modification time is within 30 days of the current date.
+      - A cron job, systemd timer, or CI pipeline refreshes the database on
+        a scheduled cadence (at least monthly).
+      - Location blocks gate access using the resolved country variable with
+        explicit allow/deny logic.
+
+    NON-COMPLIANT if:
+      - The MaxMind database file is older than 30 days.
+      - No database refresh schedule is configured.
+      - geoip2 is loaded but no access policy uses the resolved country variable.
+
+    NEEDS-HUMAN if:
+      - The database file modification time must be checked on the live host.
+      - GeoIP filtering is enforced by an upstream WAF or CDN rather than nginx.
+
+remediation:
+  summary: |
+    Schedule a monthly geoipupdate run (MaxMind tool) and confirm the .mmdb
+    file path in the geoip2 directive matches the download target.
+  template: |
+    # geoip2 module configuration:
+    geoip2 /var/lib/GeoIP/GeoLite2-Country.mmdb {
+        $geoip2_metadata_country_iso_code country iso_code;
+    }
+    map $geoip2_metadata_country_iso_code $allowed_country {
+        default no;
+        FR yes;
+        CH yes;
+    }
+    # Monthly cron refresh:
+    # 0 4 1 * * /usr/bin/geoipupdate
+
+known_na_reasons:
+  - id: NA-001
+    reason: |
+      No geographic access restrictions are required for this deployment.
+    requires_evidence: |
+      Confirm no geoip2 directives are present in any nginx configuration.

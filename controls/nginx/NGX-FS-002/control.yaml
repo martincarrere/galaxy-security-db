@@ -1,0 +1,72 @@
+id: NGX-FS-002
+component: nginx
+category: filesystem
+title: "Galaxy service umask must be 027 and nginx worker must share the Galaxy group for upload access"
+description: |
+  Verifies that the Galaxy service process uses a umask of 0027 so that newly
+  created files are group-readable but not world-readable, and that the nginx
+  worker user is a member of the Galaxy group. This enables the nginx worker to
+  read uploaded files for X-Accel-Redirect streaming without making those files
+  world-readable to all local users. World-readable dataset files would expose
+  scientific data to any user account on the host.
+
+severity: medium
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "Galaxy Project — nginx Configuration"
+    url: "https://docs.galaxyproject.org/en/master/admin/nginx.html"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "**/galaxy*.service"
+    - "**/gunicorn*.service"
+    - "**/*.service"
+    - "**/systemd/**"
+  prompt: |
+    Inspect the Galaxy systemd service unit for UMask setting and verify nginx
+    worker group membership.
+
+    COMPLIANT if:
+      - The Galaxy service unit contains UMask=0027 in the [Service] section.
+      - The nginx worker user (e.g., www-data or nginx) is a member of the
+        Galaxy data group, confirmed via /etc/group or group management config.
+      - Newly uploaded files in files_path have mode 0640 (owner Galaxy,
+        group-readable by the shared group, no world-read).
+
+    NON-COMPLIANT if:
+      - UMask is absent from the Galaxy service unit (default is usually 0022,
+        making files world-readable).
+      - UMask=0027 is set but the nginx worker user is not in the Galaxy group,
+        causing download failures or prompting operators to make files 0644.
+      - Files in Galaxy's files_path are world-readable (mode 0644 or broader).
+
+    NEEDS-HUMAN if:
+      - Group membership of the nginx worker user must be verified on the live
+        host via id www-data or getent group galaxy.
+
+remediation:
+  summary: |
+    Add UMask=0027 to the Galaxy systemd service unit and add the nginx worker
+    user to the Galaxy group. Reload the unit and verify new uploads have mode 0640.
+  template: |
+    # /etc/systemd/system/galaxy.service.d/override.conf:
+    [Service]
+    UMask=0027
+
+    # Add nginx worker to Galaxy group:
+    usermod -aG galaxy www-data
+
+    # Verify after upload:
+    stat -c %a /data/galaxy/files/<hash>/<filename>  # expect 640
+
+known_na_reasons:
+  - id: NA-001
+    reason: |
+      Galaxy and nginx run in separate containers; file sharing uses a
+      volume mount with controlled permissions rather than shared group.
+    requires_evidence: |
+      Document the volume permissions and access control model for dataset files.

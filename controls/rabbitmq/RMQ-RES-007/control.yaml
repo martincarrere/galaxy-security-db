@@ -1,0 +1,62 @@
+id: RMQ-RES-007
+component: rabbitmq
+category: resource-controls
+title: "RabbitMQ must configure per-user and per-vhost connection limits to bound connection growth"
+description: |
+  Verifies that per-user and per-virtual-host connection limits are configured in
+  definitions.json or rabbitmq.conf. Without these limits, a single leaking or
+  malicious client can exhaust broker file descriptors and memory by opening
+  connections without closing them, producing a cluster-wide denial of service.
+
+severity: medium
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "RabbitMQ Production Checklist — Connection Management"
+    url: "https://www.rabbitmq.com/docs/production-checklist"
+    section: "#connection-management"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "rabbitmq.conf"
+    - "**/rabbitmq.conf"
+    - "definitions.json"
+    - "**/definitions.json"
+  prompt: |
+    Check for per-user and per-vhost connection limit configurations.
+
+    COMPLIANT if:
+      - definitions.json contains vhost_limits entries with max-connections values.
+      - OR definitions.json contains user_limits entries with max-connections values.
+      - OR rabbitmq.conf sets max_connections as a global cap combined with
+        per-vhost or per-user limits elsewhere.
+
+    NON-COMPLIANT if:
+      - No connection limits are configured at any scope (neither global
+        max_connections nor per-vhost nor per-user).
+
+    NEEDS-HUMAN if:
+      - Global max_connections is set in rabbitmq.conf but no per-identity
+        granularity — global cap alone may be insufficient for multi-tenant use.
+
+remediation:
+  summary: |
+    Add per-vhost and per-user connection limits in the definitions file.
+    Combine with a global max_connections ceiling in rabbitmq.conf. The
+    per-identity limits prevent any single application from monopolizing
+    the global pool.
+  template: |
+    # In definitions.json:
+    {
+      "vhost_limits": [
+        { "vhost": "app-vhost", "value": { "max-connections": 200 } }
+      ],
+      "user_limits": [
+        { "user": "app-producer", "value": { "max-connections": 50 } }
+      ]
+    }
+
+known_na_reasons: []

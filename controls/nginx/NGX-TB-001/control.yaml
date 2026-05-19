@@ -1,0 +1,62 @@
+id: NGX-TB-001
+component: nginx
+category: trust-boundary
+title: "nginx must set X-Forwarded-For, X-Forwarded-Proto, and Host from trusted nginx variables"
+description: |
+  Verifies that nginx explicitly sets X-Forwarded-For, X-Forwarded-Proto, and Host
+  proxy headers from trusted nginx-internal variables, and does not pass
+  client-supplied forwarded headers through unmodified. Galaxy derives client IP
+  addresses, original protocol, and hostname from these headers; if a client can
+  inject arbitrary values, Galaxy's logging is corrupted, IP-based access controls
+  are bypassed, and URL generation may produce incorrect or insecure links.
+
+severity: medium
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "Galaxy Project — nginx Configuration"
+    url: "https://docs.galaxyproject.org/en/master/admin/nginx.html"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "**/nginx.conf"
+    - "**/nginx/*.conf"
+    - "**/sites-available/*.conf"
+    - "**/conf.d/*.conf"
+  prompt: |
+    Inspect proxy_set_header directives in Galaxy location blocks.
+
+    COMPLIANT if:
+      - proxy_set_header X-Forwarded-For uses $proxy_add_x_forwarded_for
+        (not $http_x_forwarded_for, which would pass client-supplied values).
+      - proxy_set_header X-Forwarded-Proto uses $scheme (nginx's resolved value).
+      - proxy_set_header Host uses $host or $http_host.
+      - For chained-proxy deployments, set_real_ip_from lists the trusted
+        upstream proxy CIDR so real_ip_header resolves the correct client IP.
+
+    NON-COMPLIANT if:
+      - proxy_set_header X-Forwarded-For $http_x_forwarded_for; passes
+        the raw client-supplied header without nginx's IP appended.
+      - No proxy_set_header directives are present for Galaxy location blocks,
+        meaning nginx passes whatever headers the client sends.
+
+    NEEDS-HUMAN if:
+      - The deployment is behind multiple proxies and the effective real-IP
+        resolution requires tracing the full proxy chain.
+
+remediation:
+  summary: |
+    Set all forwarded headers from nginx-trusted variables. Use
+    $proxy_add_x_forwarded_for for X-Forwarded-For, $scheme for Proto, $host for Host.
+  template: |
+    location / {
+        proxy_pass http://unix:/run/galaxy/gunicorn.sock;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Host $host;
+    }
+
+known_na_reasons: []

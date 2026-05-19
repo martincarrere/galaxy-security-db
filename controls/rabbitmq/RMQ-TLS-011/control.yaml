@@ -1,0 +1,58 @@
+id: RMQ-TLS-011
+component: rabbitmq
+category: crypto-transit
+title: "RabbitMQ TLS endpoints must be evaluated with an external scanner after deployment"
+description: |
+  Verifies that the effective TLS posture of each broker listener has been validated
+  with an external scanner such as testssl.sh after initial deployment and after any
+  TLS-related configuration change. The interaction between broker config, Erlang/OTP
+  version, and the linked OpenSSL build can produce silent misconfigurations that are
+  only detectable through active probing, not from configuration files alone.
+
+severity: medium
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "RabbitMQ Production Checklist — TLS Evaluation"
+    url: "https://www.rabbitmq.com/docs/production-checklist"
+    section: "#security-tls"
+    accessed_at: "2026-05-17"
+
+check:
+  type: human_review
+  globs:
+    - "**/testssl*"
+    - "**/tls-scan*"
+    - "**/*.log"
+  prompt: |
+    Verify that a TLS scanner was run against broker endpoints after the most
+    recent deployment or TLS configuration change.
+
+    COMPLIANT if:
+      - A testssl.sh, sslyze, or nmap ssl-enum-ciphers scan report exists for
+        the AMQPS port (5671) and management HTTPS port (15671).
+      - The report shows no SSLv3, TLSv1.0, or TLSv1.1 support.
+      - The report shows no export-grade, null, or anonymous cipher suites.
+      - Report date is within 90 days of last TLS config change or deployment.
+
+    NON-COMPLIANT if:
+      - No scan report exists or the most recent scan predates the last
+        TLS configuration change.
+      - A scan report exists and shows deprecated protocols or weak ciphers.
+
+    NEEDS-HUMAN if:
+      - Scanner access to the broker is restricted — requires scheduling
+        a scan from an authorized host.
+
+remediation:
+  summary: |
+    Run testssl.sh against each TLS listener after any TLS-related change.
+    Remediate any high-severity findings before accepting production traffic.
+    Store scan reports with deployment artifacts.
+  template: |
+    # Run after deployment or TLS config change:
+    testssl.sh --parallel rabbitmq-host:5671
+    testssl.sh --parallel rabbitmq-host:15671
+
+known_na_reasons: []

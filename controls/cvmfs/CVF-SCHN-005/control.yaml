@@ -1,0 +1,64 @@
+id: CVF-SCHN-005
+component: cvmfs
+category: supply-chain
+title: "CVMFS client public keys must be distributed out-of-band from CVMFS content delivery"
+description: |
+  Verifies that the public keys used to validate CVMFS repository signatures
+  are provisioned through a channel independent from CVMFS content delivery
+  itself. If the keys arrive through the same channel as the content they
+  validate, an attacker who controls that channel can substitute both the keys
+  and the signed content, defeating the entire trust model. Keys must originate
+  from the CVMFS software distribution (included in the package) or from a
+  separate signed OS package repository.
+
+severity: high
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "CernVM-FS — Security Deep Dive"
+    url: "https://cvmfs.readthedocs.io/en/stable/apx-security.html"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "**/cvmfs/keys/**"
+    - "**/etc/cvmfs/keys/*.pub"
+    - "**/cvmfs-config*"
+  prompt: |
+    Inspect the provenance of .pub key files in /etc/cvmfs/keys/.
+
+    COMPLIANT if:
+      - Public key files in /etc/cvmfs/keys/ are installed by a cvmfs-config-*
+        package from the signed OS package repository (verified via rpm -qf or
+        dpkg -S).
+      - Alternatively, keys are embedded in the CVMFS source distribution
+        and installed as part of the cvmfs package itself.
+      - No .pub files are fetched from a CVMFS HTTP endpoint or any channel
+        that depends on CVMFS being operational.
+
+    NON-COMPLIANT if:
+      - A .pub file in /etc/cvmfs/keys/ was downloaded via curl/wget from a
+        CVMFS server URL (http(s)://<stratum0 or 1 host>/).
+      - A provisioning script fetches public keys over CVMFS or from an
+        unauthenticated HTTP endpoint.
+
+    NEEDS-HUMAN if:
+      - Key file provenance cannot be determined from static files alone —
+        requires running rpm -qf or dpkg -S on the target host.
+
+remediation:
+  summary: |
+    Install public keys exclusively via a cvmfs-config-* package from the
+    signed OS repository, or include them in Ansible role files committed to
+    version-controlled infrastructure code. Never fetch them over CVMFS.
+  template: |
+    # Install CVMFS config package (provides public keys):
+    # Debian/Ubuntu:
+    apt-get install -y cvmfs-config-default
+
+    # RHEL/Rocky:
+    yum install -y cvmfs-config-default
+
+known_na_reasons: []

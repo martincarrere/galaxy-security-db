@@ -1,0 +1,75 @@
+id: NGX-AUTH-004
+component: nginx
+category: auth
+title: "HTTP Basic authentication credentials must be stored hashed and served only over TLS"
+description: |
+  Verifies that nginx HTTP Basic authentication is configured correctly when used
+  as an access gate: password files use bcrypt hashing (htpasswd -B), the
+  authentication is only active on HTTPS vhosts, and the credential file is
+  protected by restrictive filesystem permissions. Basic auth credentials travel
+  in every request; transmitting them over plaintext HTTP is equivalent to
+  sending the password in the clear.
+
+severity: low
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "nginx Admin Guide — HTTP Basic Authentication"
+    url: "https://docs.nginx.com/nginx/admin-guide/security-controls/configuring-http-basic-authentication/"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "**/nginx.conf"
+    - "**/nginx/*.conf"
+    - "**/sites-available/*.conf"
+    - "**/conf.d/*.conf"
+    - "**/.htpasswd"
+    - "**/htpasswd"
+  prompt: |
+    Locate auth_basic directives and inspect the associated credential file and TLS context.
+
+    COMPLIANT if:
+      - auth_basic directives only appear inside server blocks that also have
+        ssl_certificate / listen ... ssl, or inside location blocks within
+        such SSL-enabled server blocks.
+      - The auth_basic_user_file path points to a file that exists and contains
+        only bcrypt-hashed ($2y$) or SHA-hashed entries — not plaintext passwords.
+      - No auth_basic directive appears in a non-SSL server block.
+
+    NON-COMPLIANT if:
+      - An auth_basic directive is present on a plain HTTP (non-SSL) server block
+        where credentials would transit in cleartext.
+      - The .htpasswd file contains plaintext passwords (lines without a hash prefix).
+
+    NEEDS-HUMAN if:
+      - The .htpasswd file is not available for inspection — confirm hash format
+        and file permissions on the target host.
+
+remediation:
+  summary: |
+    Remove auth_basic from any plain HTTP server blocks. Generate password entries
+    with bcrypt: htpasswd -B /etc/nginx/.htpasswd username. Set file permissions
+    0640 owned by root:nginx.
+  template: |
+    # Generate bcrypt-hashed entry:
+    htpasswd -B /etc/nginx/.htpasswd <username>
+
+    # Only in HTTPS context:
+    server {
+        listen 443 ssl;
+        ssl_certificate ...;
+        location /internal {
+            auth_basic "Restricted";
+            auth_basic_user_file /etc/nginx/.htpasswd;
+        }
+    }
+
+known_na_reasons:
+  - id: NA-001
+    reason: |
+      HTTP Basic authentication is not used in this deployment.
+    requires_evidence: |
+      Confirm no auth_basic directives are present in any nginx configuration.

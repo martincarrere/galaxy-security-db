@@ -1,0 +1,68 @@
+id: CVF-SCHN-004
+component: cvmfs
+category: supply-chain
+title: "CVMFS packages must be installed with GPG signature verification enforced"
+description: |
+  Verifies that the host package manager verifies the CernVM-FS GPG signature for
+  both package and repository metadata. GPG verification is independent of the
+  HTTPS transport and provides a final defense if a mirror is compromised or if
+  TLS interception succeeds. Without GPG verification, any package served from a
+  compromised mirror or through a rogue CA would be installed without detection.
+
+severity: high
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "CernVM-FS — Security Deep Dive"
+    url: "https://cvmfs.readthedocs.io/en/stable/apx-security.html"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "**/sources.list.d/cvmfs*"
+    - "**/apt/sources.list.d/*.list"
+    - "**/yum.repos.d/cernvm*.repo"
+    - "**/yum.repos.d/cvmfs*.repo"
+    - "**/*.repo"
+    - "**/keyrings/cvmfs*"
+  prompt: |
+    Inspect package manager source configuration for CVMFS GPG verification settings.
+
+    COMPLIANT if (Debian/Ubuntu):
+      - The apt source entry for CVMFS includes a signed-by= field referencing
+        the CVMFS keyring file (/usr/share/keyrings/cvmfs-archive-keyring.gpg
+        or equivalent).
+      - The keyring file exists and its GPG fingerprint matches the official
+        CernVM-FS distribution key.
+
+    COMPLIANT if (RHEL/Rocky/AlmaLinux):
+      - The .repo file for CVMFS has gpgcheck=1 and repo_gpgcheck=1.
+      - gpgkey= points to the official CernVM-FS GPG key URL or a local
+        imported copy with the documented fingerprint.
+
+    NON-COMPLIANT if:
+      - apt source has no signed-by= (using deprecated apt-key or no key check).
+      - yum/dnf repo has gpgcheck=0 or repo_gpgcheck=0.
+
+    NEEDS-HUMAN if:
+      - Package repository configuration is managed by Ansible or a config
+        management tool and the effective source config is generated at runtime.
+
+remediation:
+  summary: |
+    On Debian/Ubuntu: add signed-by= to the CVMFS apt source. On RHEL-family:
+    set gpgcheck=1 and repo_gpgcheck=1 in the .repo file and import the key.
+  template: |
+    # Debian/Ubuntu:
+    echo "deb [signed-by=/usr/share/keyrings/cvmfs-keyring.gpg] https://ecsft.cern.ch/dist/cvmfs/cvmfs-release/deb/ubuntu focal main" \
+      > /etc/apt/sources.list.d/cvmfs.list
+
+    # RHEL:
+    # In /etc/yum.repos.d/cernvm.repo:
+    # gpgcheck=1
+    # repo_gpgcheck=1
+    # gpgkey=https://ecsft.cern.ch/dist/cvmfs/RPM-GPG-KEY-CernVM
+
+known_na_reasons: []

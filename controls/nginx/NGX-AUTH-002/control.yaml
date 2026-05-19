@@ -1,0 +1,74 @@
+id: NGX-AUTH-002
+component: nginx
+category: auth
+title: "Sensitive Galaxy-proxied paths must be gated with auth_request against Galaxy session"
+description: |
+  Verifies that nginx requires an authenticated Galaxy session before proxying
+  to auxiliary administrator-facing interfaces such as Galaxy Reports. These
+  tools typically lack their own authentication and expose deployment-wide usage
+  data, job metadata, and administrative controls. Using auth_request against
+  Galaxy's session validation endpoint ensures access is tied to a valid Galaxy
+  login.
+
+severity: high
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "Galaxy Project — nginx Configuration"
+    url: "https://docs.galaxyproject.org/en/master/admin/nginx.html"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "**/nginx.conf"
+    - "**/nginx/*.conf"
+    - "**/sites-available/*.conf"
+    - "**/conf.d/*.conf"
+  prompt: |
+    Inspect nginx configuration for auth_request protection on sensitive Galaxy-proxied paths.
+
+    COMPLIANT if:
+      - Locations proxying admin-facing tools (e.g., /reports, /grafana, admin proxies)
+        contain an auth_request directive pointing to a Galaxy session-check endpoint.
+      - An internal location proxies to a Galaxy endpoint that validates the session
+        (e.g., /api/whoami or equivalent).
+      - An unauthenticated request to the protected path would receive a 401 or 403
+        from the auth_request subrequest before reaching the upstream.
+
+    NON-COMPLIANT if:
+      - Admin-facing proxy locations (Reports, Grafana, monitoring tools) have no
+        auth_request directive.
+      - The auth_request target is not an internal location.
+
+    NEEDS-HUMAN if:
+      - Sensitive Galaxy sub-applications are authenticated by a mechanism other than
+        nginx auth_request (custom module, external WAF) — requires direct verification.
+
+remediation:
+  summary: |
+    Add an internal auth location and include auth_request on every location
+    that proxies admin-only Galaxy sub-applications.
+  template: |
+    # Galaxy session check endpoint:
+    location = /galaxy_auth {
+        internal;
+        proxy_pass http://unix:/var/run/galaxy/gunicorn.sock:/api/whoami;
+        proxy_pass_request_body off;
+        proxy_set_header Content-Length "";
+    }
+
+    # Protect Galaxy Reports:
+    location /reports {
+        auth_request /galaxy_auth;
+        proxy_pass http://localhost:9001;
+    }
+
+known_na_reasons:
+  - id: NA-001
+    reason: |
+      No Galaxy auxiliary services (Reports, etc.) are proxied through nginx
+      in this deployment.
+    requires_evidence: |
+      Confirm no admin-facing sub-applications are proxied.

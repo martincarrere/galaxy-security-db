@@ -1,0 +1,70 @@
+id: NGX-NET-002
+component: nginx
+category: network
+title: "nginx must connect to Galaxy's upstream server over a permission-restricted Unix domain socket"
+description: |
+  Verifies that nginx uses a Unix domain socket rather than a TCP loopback port
+  for the upstream connection to Galaxy's WSGI/ASGI server. A Unix socket
+  eliminates the risk of the upstream accidentally binding on 0.0.0.0 and allows
+  access control via file permissions: only the nginx worker user and the Galaxy
+  process owner may connect. This prevents any local user on the host from directly
+  reaching Galaxy's application layer, bypassing nginx.
+
+severity: medium
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "Galaxy Project — nginx Configuration"
+    url: "https://docs.galaxyproject.org/en/master/admin/nginx.html"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "**/nginx.conf"
+    - "**/nginx/*.conf"
+    - "**/sites-available/*.conf"
+    - "**/conf.d/*.conf"
+    - "**/gunicorn*.service"
+    - "**/galaxy*.service"
+  prompt: |
+    Verify that proxy_pass for Galaxy targets a Unix domain socket.
+
+    COMPLIANT if:
+      - The proxy_pass directive for Galaxy uses the unix: scheme:
+        proxy_pass http://unix:/path/to/socket;
+      - The socket file has mode 0660 or more restrictive, owned by the Galaxy
+        user with the nginx worker user in the socket's group.
+      - No TCP listener for Galaxy is open on localhost (no listen 127.0.0.1:8000
+        or listen 0.0.0.0:... in the Galaxy/Gunicorn service unit).
+
+    NON-COMPLIANT if:
+      - proxy_pass for Galaxy uses a TCP address (http://127.0.0.1:<port>).
+      - Galaxy's Gunicorn/uWSGI is bound to 0.0.0.0 on any port.
+
+    NEEDS-HUMAN if:
+      - Galaxy is deployed in a container where Unix socket sharing between
+        containers requires volume mounts — verify the effective socket path.
+
+remediation:
+  summary: |
+    Configure Gunicorn to bind on a Unix socket (--bind unix:/path/to/sock)
+    with owner galaxy:www-data and mode 0660. Update proxy_pass in nginx
+    to use the unix: scheme.
+  template: |
+    # Gunicorn startup (systemd service):
+    ExecStart=gunicorn --bind unix:/run/galaxy/gunicorn.sock galaxy.webapps.galaxy.buildapp:uwsgi_app
+
+    # nginx proxy_pass:
+    location / {
+        proxy_pass http://unix:/run/galaxy/gunicorn.sock;
+    }
+
+known_na_reasons:
+  - id: NA-001
+    reason: |
+      Galaxy and nginx run in separate containers where Unix sockets are
+      not available; TCP communication is restricted to a private container network.
+    requires_evidence: |
+      Confirm container network isolation prevents external access to the Galaxy TCP port.

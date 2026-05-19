@@ -1,0 +1,79 @@
+id: RMQ-AUTH-001
+title: "RabbitMQ default 'guest' user must be removed or restricted to loopback"
+description: |
+  The RabbitMQ default 'guest' user has full administrative privileges and a
+  well-known default password. Although recent RabbitMQ versions restrict the
+  guest user to loopback connections by default, this restriction can be
+  relaxed via configuration. Leaving the guest user reachable from non-loopback
+  interfaces is a critical credential exposure, especially when the management
+  plugin is also reachable.
+
+component: rabbitmq
+category: auth
+severity: high
+
+applicable_when:
+  versions: ">=3.0"
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "RabbitMQ Access Control — the guest user"
+    url: "https://www.rabbitmq.com/access-control.html#loopback-users"
+    section: "Loopback Users"
+    version: "3.13"
+    accessed_at: "2026-05-19"
+  - type: vendor_doc
+    authority: strong
+    title: "RabbitMQ Production Checklist — Security"
+    url: "https://www.rabbitmq.com/production-checklist.html"
+    section: "Security"
+    accessed_at: "2026-05-19"
+
+check:
+  type: file_analysis
+  globs:
+    - "rabbitmq.conf"
+    - "**/rabbitmq.conf"
+  prompt: |
+    Determine the effective state of the default 'guest' user in this RabbitMQ
+    configuration:
+
+    COMPLIANT if any of:
+      - definitions.json shows no 'guest' user (deleted).
+      - loopback_users.guest = true is present.
+      - Legacy syntax 'loopback_users = guest' is present.
+
+    NON-COMPLIANT if any of:
+      - loopback_users.guest = false is explicitly set.
+      - loopback_users = none is set.
+      - The default guest user is present AND reachable from non-loopback
+        interfaces AND the password is unchanged.
+
+    NEEDS-HUMAN if:
+      - Configuration is silent on guest user AND definitions.json is not
+        provided, so the effective state cannot be determined from files alone.
+
+remediation:
+  summary: |
+    Either delete the default 'guest' user entirely (preferred) or ensure that
+    'loopback_users.guest = true' remains set. Never set
+    'loopback_users.guest = false' in production.
+  template: |
+    # In rabbitmq.conf — keep guest restricted to loopback:
+    loopback_users.guest = true
+
+    # Or, better, remove it entirely:
+    # rabbitmqctl delete_user guest
+  references:
+    - "https://www.rabbitmq.com/access-control.html#loopback-users"
+    - "https://www.rabbitmq.com/production-checklist.html"
+
+known_na_reasons:
+  - id: NA-001
+    reason: |
+      Cluster isolé sur réseau de management privé sans exposition externe;
+      le guest user est utilisé par un outil legacy interne en cours de migration.
+    requires_evidence: |
+      Topologie réseau documentée + identification de l'outil legacy +
+      plan de migration daté.

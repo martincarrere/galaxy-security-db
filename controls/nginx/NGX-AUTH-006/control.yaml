@@ -1,0 +1,77 @@
+id: NGX-AUTH-006
+component: nginx
+category: auth
+title: "OIDC SSO handshake must be performed at nginx Plus before proxying to upstream applications"
+description: |
+  Verifies that OpenID Connect SSO is performed at the nginx Plus layer for
+  applications that require authenticated access, so backend services receive
+  only requests with a validated identity. Centralizing OIDC at the proxy
+  eliminates per-application SSO integration work and ensures consistent
+  session and token handling across the stack. This feature is native to nginx
+  Plus; open-source nginx requires the njs module or a third-party OIDC proxy.
+
+severity: medium
+
+applicable_when:
+  deployment_modes: ["nginx-plus"]
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "nginx Admin Guide — OpenID Connect SSO"
+    url: "https://docs.nginx.com/nginx/admin-guide/security-controls/configuring-oidc/"
+    accessed_at: "2026-05-17"
+
+check:
+  type: human_review
+  globs:
+    - "**/nginx.conf"
+    - "**/nginx/*.conf"
+    - "**/sites-available/*.conf"
+    - "**/conf.d/*.conf"
+    - "**/openid_connect*.conf"
+  prompt: |
+    Verify that OIDC SSO is configured at nginx Plus for protected applications.
+
+    COMPLIANT if:
+      - nginx Plus OIDC configuration is present with authorization_endpoint,
+        token_endpoint, jwks_uri, client_id, and client_secret configured.
+      - The client_secret is loaded via an include from a file outside the main
+        config tree and not committed to version control.
+      - Protected locations redirect unauthenticated users to the IdP and only
+        proxy after a valid ID token is established.
+      - Required claims are verified (e.g., allowed groups, roles).
+
+    NON-COMPLIANT if:
+      - client_secret is hardcoded inline in a config file that may be committed
+        to version control.
+      - OIDC configuration is present but required claims are not enforced,
+        allowing any authenticated IdP user to reach the upstream.
+
+    NEEDS-HUMAN if:
+      - nginx Plus is not in use and OIDC is handled by a sidecar proxy or
+        application layer — verify the equivalent configuration separately.
+      - IdP connectivity and token exchange must be tested on the live system.
+
+remediation:
+  summary: |
+    Use the nginx Plus OIDC reference implementation. Store client_secret
+    outside the main config via include. Enforce required claims to scope
+    access to authorized users only.
+  template: |
+    # Load client secret from protected file:
+    include /etc/nginx/oidc/client_secret.conf;
+
+    # Protected location:
+    location / {
+        auth_jwt "SSO" token=$session_jwt;
+        error_page 401 = @oidc_auth;
+        proxy_pass http://upstream;
+    }
+
+known_na_reasons:
+  - id: NA-001
+    reason: |
+      OIDC SSO is not used in this deployment or is handled by the application layer.
+    requires_evidence: |
+      Document the authentication mechanism in use for each application.

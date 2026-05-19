@@ -1,0 +1,72 @@
+id: RMQ-AUTH-006
+component: rabbitmq
+category: auth
+title: "RabbitMQ user permissions must use scoped patterns rather than full wildcards"
+description: |
+  Verifies that per-virtual-host permission entries in the definitions file do not
+  grant all-resources access to every user. RabbitMQ scopes configure, write, and
+  read permissions as regex patterns over resource names within a vhost. A pattern
+  of ".*" grants access to every exchange and queue in the vhost. Producers typically
+  need write only; consumers need read only; neither needs configure on all resources.
+
+severity: medium
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "RabbitMQ Access Control — Permissions"
+    url: "https://www.rabbitmq.com/docs/access-control"
+    section: "#permissions"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "definitions.json"
+    - "**/definitions.json"
+    - "**/rabbitmq-definitions.json"
+  prompt: |
+    For each entry in the permissions array, inspect configure, write, and read
+    pattern values.
+
+    COMPLIANT if:
+      - At least some non-administrator user entries use patterns narrower than ".*"
+        for at least one of configure, write, or read.
+
+    NON-COMPLIANT if:
+      - Any non-administrator user has configure = ".*" AND write = ".*" AND
+        read = ".*" simultaneously (full wildcard on all three axes).
+
+    NEEDS-HUMAN if:
+      - definitions.json is absent.
+      - All users with ".*" permissions carry the administrator tag (full access
+        may be intentional for admin accounts).
+
+remediation:
+  summary: |
+    Assign the narrowest regex patterns that cover each application's actual
+    resource needs. A consumer needs read = "<queue-name>" only; a producer
+    needs write = "<exchange-name>" only. Configure permission should be granted
+    only to accounts that must declare topology.
+  template: |
+    # In definitions.json permissions array:
+    {
+      "permissions": [
+        {
+          "user": "app-producer",
+          "vhost": "app-vhost",
+          "configure": "",
+          "write": "^app\\.events\\..*",
+          "read": ""
+        },
+        {
+          "user": "app-consumer",
+          "vhost": "app-vhost",
+          "configure": "",
+          "write": "",
+          "read": "^app\\.queue\\..*"
+        }
+      ]
+    }
+
+known_na_reasons: []

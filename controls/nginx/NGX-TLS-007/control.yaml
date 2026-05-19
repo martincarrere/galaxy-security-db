@@ -1,0 +1,70 @@
+id: NGX-TLS-007
+component: nginx
+category: crypto-transit
+title: "nginx stream upstream hop must encrypt and verify the TCP connection to the backend"
+description: |
+  Verifies that nginx stream proxies targeting sensitive TCP backends enable
+  proxy_ssl and proxy_ssl_verify to encrypt and authenticate the upstream TCP hop.
+  Without these settings, the bytes proxied by the stream module — which may include
+  protocol credentials, dataset payloads, or session content — traverse the internal
+  segment in cleartext and are vulnerable to interception by any host with access to
+  that segment.
+
+severity: medium
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "nginx Admin Guide — Securing TCP Traffic to Upstream"
+    url: "https://docs.nginx.com/nginx/admin-guide/security-controls/securing-tcp-traffic-upstream/"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "**/nginx.conf"
+    - "**/nginx/*.conf"
+    - "**/stream.conf"
+    - "**/conf.d/*.conf"
+  prompt: |
+    Inspect stream server blocks for proxy_ssl and proxy_ssl_verify configuration.
+
+    COMPLIANT if:
+      - Stream server blocks proxying sensitive backends have proxy_ssl on;.
+      - proxy_ssl_verify on; is set.
+      - proxy_ssl_trusted_certificate points to a valid CA bundle.
+      - proxy_ssl_protocols TLSv1.2 TLSv1.3; is set.
+      - proxy_ssl_name is set to the expected upstream hostname for SNI.
+
+    NON-COMPLIANT if:
+      - Stream server blocks for sensitive backends have no proxy_ssl directive.
+      - proxy_ssl_verify is explicitly off.
+
+    NEEDS-HUMAN if:
+      - No stream {} blocks are present — control not applicable.
+      - The upstream protocol does not support TLS framing (e.g., plain Redis
+        without TLS support) — document the compensating control.
+
+remediation:
+  summary: |
+    Add proxy_ssl on; and proxy_ssl_verify on; to each stream server block
+    that fronts a TLS-capable backend, along with a trusted CA bundle.
+  template: |
+    stream {
+        server {
+            listen 5671 ssl;
+            proxy_pass rabbitmq-upstream:5671;
+            proxy_ssl on;
+            proxy_ssl_verify on;
+            proxy_ssl_trusted_certificate /etc/nginx/ca-bundle.crt;
+            proxy_ssl_protocols TLSv1.2 TLSv1.3;
+            proxy_ssl_name rabbitmq.internal;
+        }
+    }
+
+known_na_reasons:
+  - id: NA-001
+    reason: |
+      No stream module listeners are in use in this deployment.
+    requires_evidence: |
+      Confirm no stream {} blocks are present in any nginx configuration.

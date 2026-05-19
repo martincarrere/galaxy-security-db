@@ -1,0 +1,55 @@
+id: RMQ-AUTH-008
+component: rabbitmq
+category: auth
+title: "RabbitMQ production nodes must load users and permissions from a definitions file at boot"
+description: |
+  Verifies that rabbitmq.conf declares a load_definitions path so the broker
+  applies users, virtual hosts, permissions, and policies from a managed definitions
+  file at startup. Manual CLI-based user provisioning is non-reproducible and drifts
+  across cluster rebuilds, leaving gaps where access controls are missing or stale
+  accounts persist.
+
+severity: medium
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "RabbitMQ Access Control — Definitions"
+    url: "https://www.rabbitmq.com/docs/access-control"
+    section: "#definitions"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "rabbitmq.conf"
+    - "**/rabbitmq.conf"
+    - "**/rabbitmq.conf.d/*.conf"
+  prompt: |
+    Locate the load_definitions directive.
+
+    COMPLIANT if:
+      - load_definitions is present and points to a non-empty file path value.
+
+    NON-COMPLIANT if:
+      - load_definitions is explicitly commented out or absent in a configuration
+        that otherwise shows production-intent settings (TLS configured,
+        non-default vhosts, explicit resource limits).
+
+    NEEDS-HUMAN if:
+      - rabbitmq.conf is absent or contains only default/minimal settings —
+        cannot determine whether the broker is production-intent from the file.
+      - load_definitions is absent but the file shows no other production-intent
+        configuration markers.
+
+remediation:
+  summary: |
+    Create a definitions.json file under version control containing all users,
+    virtual hosts, permissions, and policies. Reference it in rabbitmq.conf via
+    load_definitions. Store the definitions file with restricted filesystem
+    permissions and use hashed passwords only.
+  template: |
+    # In rabbitmq.conf:
+    load_definitions = /etc/rabbitmq/definitions.json
+
+known_na_reasons: []

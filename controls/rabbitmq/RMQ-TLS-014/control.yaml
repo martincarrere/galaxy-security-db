@@ -1,0 +1,57 @@
+id: RMQ-TLS-014
+component: rabbitmq
+category: crypto-transit
+title: "RabbitMQ TLS configuration must explicitly exclude SSLv3"
+description: |
+  Verifies that SSLv3 is not present in ssl_options.versions. SSLv3 is vulnerable
+  to POODLE (CVE-2014-3566) and must be explicitly disabled — Erlang/OTP does not
+  refuse it by default in all versions. Running any listener that advertises SSLv3
+  allows clients to negotiate a cryptographically broken protocol regardless of
+  other TLS hardening measures.
+
+severity: high
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "RabbitMQ TLS Support — Disabling SSLv3"
+    url: "https://www.rabbitmq.com/docs/ssl"
+    section: "#tls-versions"
+    accessed_at: "2026-05-17"
+  - type: cve
+    authority: strong
+    title: "CVE-2014-3566 — POODLE SSLv3 vulnerability"
+    cve_id: CVE-2014-3566
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "rabbitmq.conf"
+    - "**/rabbitmq.conf"
+    - "**/rabbitmq.conf.d/*.conf"
+  prompt: |
+    Locate ssl_options.versions.
+
+    COMPLIANT if:
+      - ssl_options.versions is explicitly set and does not include sslv3.
+
+    NON-COMPLIANT if:
+      - ssl_options.versions includes sslv3.
+
+    NEEDS-HUMAN if:
+      - ssl_options.versions is absent — cannot confirm SSLv3 is excluded
+        without knowing the Erlang/OTP version and its defaults.
+      - TLS listeners are not configured — control may not apply.
+
+remediation:
+  summary: |
+    Set ssl_options.versions to an explicit list containing only tlsv1.2 and
+    tlsv1.3. Do not rely on Erlang/OTP defaults to exclude SSLv3. Verify with
+    testssl.sh that SSLv3 is not accepted on the AMQPS port.
+  template: |
+    # In rabbitmq.conf — explicitly exclude legacy protocols including SSLv3:
+    ssl_options.versions.1 = tlsv1.3
+    ssl_options.versions.2 = tlsv1.2
+
+known_na_reasons: []

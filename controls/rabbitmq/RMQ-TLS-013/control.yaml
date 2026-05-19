@@ -1,0 +1,58 @@
+id: RMQ-TLS-013
+component: rabbitmq
+category: crypto-transit
+title: "RabbitMQ must reject TLS connections that do not present a valid client certificate"
+description: |
+  Verifies that ssl_options.verify = verify_peer and ssl_options.fail_if_no_peer_cert = true
+  are both set. Setting verify_peer without fail_if_no_peer_cert still allows clients that
+  present no certificate to connect. Both directives together enforce mutual TLS: clients
+  must prove their identity with a certificate signed by a trusted CA, not only with a
+  username and password.
+
+severity: high
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "RabbitMQ TLS Support — Peer Verification"
+    url: "https://www.rabbitmq.com/docs/ssl"
+    section: "#peer-verification"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "rabbitmq.conf"
+    - "**/rabbitmq.conf"
+    - "**/rabbitmq.conf.d/*.conf"
+  prompt: |
+    Locate ssl_options.verify and ssl_options.fail_if_no_peer_cert.
+
+    COMPLIANT if:
+      - ssl_options.verify = verify_peer AND ssl_options.fail_if_no_peer_cert = true
+        are both present.
+
+    NON-COMPLIANT if any of:
+      - ssl_options.verify = verify_none.
+      - ssl_options.verify = verify_peer but fail_if_no_peer_cert is absent
+        or set to false — clients without certificates are still accepted.
+
+    NEEDS-HUMAN if:
+      - No TLS listeners configured — control not applicable.
+      - Some listener contexts intentionally allow anonymous TLS clients (e.g.,
+        a public-facing listener alongside a private mTLS one).
+
+remediation:
+  summary: |
+    Set both verify_peer and fail_if_no_peer_cert = true. Ensure all client
+    applications have valid certificates before enabling these settings in
+    production, and verify the cacertfile contains all client CA chains.
+  template: |
+    # In rabbitmq.conf:
+    ssl_options.verify               = verify_peer
+    ssl_options.fail_if_no_peer_cert = true
+    ssl_options.cacertfile           = /etc/rabbitmq/ca_certificate.pem
+    ssl_options.certfile             = /etc/rabbitmq/server_certificate.pem
+    ssl_options.keyfile              = /etc/rabbitmq/server_key.pem
+
+known_na_reasons: []

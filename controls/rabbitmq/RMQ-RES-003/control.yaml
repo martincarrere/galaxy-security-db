@@ -1,0 +1,60 @@
+id: RMQ-RES-003
+component: rabbitmq
+category: resource-controls
+title: "RabbitMQ systemd service must raise the open file descriptor limit to at least 50 000"
+description: |
+  Verifies that the systemd service unit for RabbitMQ sets LimitNOFILE to at least
+  50 000. Default OS file descriptor limits are far below what a production broker
+  requires; when exhausted, the broker silently stops accepting new connections,
+  producing a denial-of-service that can be triggered by ordinary growth or a
+  deliberate connection-saturation attack.
+
+severity: medium
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "RabbitMQ Production Checklist — File Descriptors"
+    url: "https://www.rabbitmq.com/docs/production-checklist"
+    section: "#resource-limits-file-descriptors"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "**/rabbitmq*.service"
+    - "**/rabbitmq-server.service"
+    - "**/systemd/system/rabbitmq*.service"
+    - "/etc/systemd/system/rabbitmq*.service"
+    - "/lib/systemd/system/rabbitmq-server.service"
+  prompt: |
+    Locate the LimitNOFILE directive in the [Service] section.
+
+    COMPLIANT if:
+      - LimitNOFILE is set to a value >= 50000.
+      - LimitNOFILE = infinity is set (no hard cap — acceptable if combined
+        with other resource controls).
+
+    NON-COMPLIANT if:
+      - LimitNOFILE is set to a value < 50000.
+      - LimitNOFILE is absent and no override file raises it — OS default
+        (typically 1024 or 4096) is far too low for production.
+
+    NEEDS-HUMAN if:
+      - No systemd service file found — broker may use a different process
+        supervisor (upstart, runit, launchd) where the limit is set differently.
+
+remediation:
+  summary: |
+    Set LimitNOFILE in the systemd service unit or a drop-in override file.
+    For large deployments (high concurrent connections + many queues), values
+    of 500 000 are common without measurable overhead.
+  template: |
+    # In /etc/systemd/system/rabbitmq-server.service.d/limits.conf:
+    [Service]
+    LimitNOFILE=500000
+
+    # Then reload:
+    # systemctl daemon-reload && systemctl restart rabbitmq-server
+
+known_na_reasons: []

@@ -1,0 +1,61 @@
+id: RMQ-CRED-005
+component: rabbitmq
+category: secrets
+title: "RabbitMQ TLS private key files must be password-protected"
+description: |
+  Verifies that private key PEM files referenced in ssl_options are encrypted
+  (password-protected) rather than stored in plaintext on disk. An unencrypted
+  private key file, once exfiltrated, allows immediate broker impersonation or
+  decryption of previously captured TLS traffic with no additional credential.
+
+severity: high
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "RabbitMQ TLS Support — Private Key Password Protection"
+    url: "https://www.rabbitmq.com/docs/ssl"
+    section: "#private-key-usage"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "**/*.pem"
+    - "**/*.key"
+    - "**/server.key"
+    - "**/server_key.pem"
+  prompt: |
+    Inspect PEM key files for encryption headers.
+
+    COMPLIANT if:
+      - Private key files contain the headers:
+          Proc-Type: 4,ENCRYPTED
+          DEK-Info: <cipher>,<iv>
+        indicating the key is password-protected.
+
+    NON-COMPLIANT if:
+      - Private key files contain "BEGIN RSA PRIVATE KEY" or "BEGIN PRIVATE KEY"
+        headers WITHOUT a Proc-Type: 4,ENCRYPTED header — plaintext key on disk.
+      - Private key files contain "BEGIN EC PRIVATE KEY" without encryption headers.
+
+    NEEDS-HUMAN if:
+      - No private key files found at the configured paths.
+      - File appears to be a CA bundle or certificate file rather than a private key.
+      - ssl_options.keyfile references a hardware security module or PKCS#11 URI
+        (encryption headers not applicable).
+
+remediation:
+  summary: |
+    Re-generate the private key with AES encryption: openssl genrsa -aes256 -out server_key.pem 4096
+    Set ssl_options.password in rabbitmq.conf to the key password. Store the password
+    in a secrets manager rather than directly in rabbitmq.conf in plaintext.
+  template: |
+    # Generate an encrypted key:
+    # openssl genrsa -aes256 -out /etc/rabbitmq/server_key.pem 4096
+
+    # In rabbitmq.conf — reference the decryption password:
+    ssl_options.keyfile  = /etc/rabbitmq/server_key.pem
+    ssl_options.password = ${RABBITMQ_TLS_KEY_PASSWORD}
+
+known_na_reasons: []

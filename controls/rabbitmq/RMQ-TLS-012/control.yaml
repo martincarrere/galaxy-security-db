@@ -1,0 +1,53 @@
+id: RMQ-TLS-012
+component: rabbitmq
+category: crypto-transit
+title: "RabbitMQ TLS listeners must enable peer certificate verification"
+description: |
+  Verifies that ssl_options.verify is set to verify_peer on TLS-enabled listeners.
+  Without peer verification, TLS provides encryption but no authenticity guarantee —
+  an active attacker can intercept the handshake and impersonate the broker, capturing
+  credentials and message payloads without triggering certificate validation errors.
+
+severity: high
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "RabbitMQ Production Checklist — TLS"
+    url: "https://www.rabbitmq.com/docs/production-checklist"
+    section: "#security-tls"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "rabbitmq.conf"
+    - "**/rabbitmq.conf"
+    - "**/rabbitmq.conf.d/*.conf"
+  prompt: |
+    Locate ssl_options.verify.
+
+    COMPLIANT if:
+      - ssl_options.verify = verify_peer is present.
+
+    NON-COMPLIANT if:
+      - ssl_options.verify = verify_none is set.
+      - ssl_options.verify is absent while ssl_listeners is configured
+        (default is verify_none, which is insecure).
+
+    NEEDS-HUMAN if:
+      - No ssl_listeners or listeners.ssl configured — TLS not enabled,
+        control not applicable.
+
+remediation:
+  summary: |
+    Set ssl_options.verify = verify_peer. Also set ssl_options.fail_if_no_peer_cert = true
+    to reject clients that do not present a certificate, enabling mutual TLS authentication.
+    Ensure the cacertfile contains all CAs whose certificates should be trusted.
+  template: |
+    # In rabbitmq.conf:
+    ssl_options.verify             = verify_peer
+    ssl_options.fail_if_no_peer_cert = true
+    ssl_options.cacertfile         = /etc/rabbitmq/ca_certificate.pem
+
+known_na_reasons: []

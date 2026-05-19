@@ -1,0 +1,74 @@
+id: RMQ-NET-003
+component: rabbitmq
+category: network
+title: "Client protocol ports must be restricted to authorized application host ranges"
+description: |
+  Verifies that firewall rules limit inbound access to client-facing ports —
+  AMQP (5672), AMQPS (5671), management HTTP (15672), management HTTPS (15671),
+  MQTT (1883/8883), and STOMP (61613/61614) — to only the IP ranges of authorized
+  application hosts. Exposing these ports to the public internet allows unauthenticated
+  protocol probing, brute-force credential attacks, and exploitation of any
+  unpatched broker CVE without requiring network-level access.
+
+severity: high
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "RabbitMQ Production Checklist — Firewall Rules"
+    url: "https://www.rabbitmq.com/docs/production-checklist"
+    section: "#security-firewall-rules"
+    accessed_at: "2026-05-17"
+
+check:
+  type: human_review
+  globs:
+    - "**/iptables*"
+    - "**/nftables*"
+    - "**/ufw*"
+    - "**/*.tf"
+    - "**/security-groups*"
+  prompt: |
+    Verify that firewall or security group rules restrict client-facing broker
+    ports to authorized application host IP ranges.
+
+    Ports in scope: 5672 (AMQP), 5671 (AMQPS), 15672 (management HTTP),
+    15671 (management HTTPS), 1883/8883 (MQTT if enabled), 61613/61614 (STOMP if enabled).
+
+    COMPLIANT if:
+      - Firewall rules (iptables, nftables, ufw) or cloud security group ingress
+        rules allow these ports only from known application host CIDRs or security
+        groups, and deny all other sources including 0.0.0.0/0.
+      - Terraform or IaC shows security group ingress scoped to application
+        host CIDRs for each protocol port in use.
+      - Ports for protocols not enabled on the broker (e.g., MQTT/STOMP) are
+        absent from allowed ingress rules or explicitly blocked.
+
+    NON-COMPLIANT if:
+      - Any client port allows 0.0.0.0/0 ingress.
+      - No firewall rules exist for any of the client-facing ports.
+      - Management ports (15672/15671) are accessible from outside the ops network.
+
+    NEEDS-HUMAN if:
+      - Firewall policy is managed via cloud console, network appliance, or
+        an external policy-as-code system not available for static review —
+        requires live rule inspection.
+
+remediation:
+  summary: |
+    Add explicit ingress rules for each active protocol port, permitting only
+    the CIDRs of application hosts and the ops/admin network. Deny all remaining
+    sources at both the host firewall and cloud security group layers.
+  template: |
+    # iptables — allow AMQP only from app subnet, block all others:
+    iptables -A INPUT -p tcp --dport 5671 -s 10.0.2.0/24 -j ACCEPT
+    iptables -A INPUT -p tcp --dport 5671 -j DROP
+    iptables -A INPUT -p tcp --dport 5672 -s 10.0.2.0/24 -j ACCEPT
+    iptables -A INPUT -p tcp --dport 5672 -j DROP
+    # Restrict management UI to ops CIDR only:
+    iptables -A INPUT -p tcp --dport 15671 -s 10.0.3.0/24 -j ACCEPT
+    iptables -A INPUT -p tcp --dport 15671 -j DROP
+    iptables -A INPUT -p tcp --dport 15672 -s 10.0.3.0/24 -j ACCEPT
+    iptables -A INPUT -p tcp --dport 15672 -j DROP
+
+known_na_reasons: []

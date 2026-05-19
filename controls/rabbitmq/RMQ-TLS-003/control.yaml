@@ -1,0 +1,62 @@
+id: RMQ-TLS-003
+component: rabbitmq
+category: crypto-transit
+title: "RabbitMQ TLS certificates must include correct Extended Key Usage values"
+description: |
+  Verifies that certificate files referenced in ssl_options contain the appropriate
+  Extended Key Usage (EKU) extension: id-kp-serverAuth for broker certificates and
+  id-kp-clientAuth for client certificates. Missing EKU values can cause negotiation
+  failures or allow incorrect certificates to be accepted in some Erlang/OTP versions.
+
+severity: medium
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "RabbitMQ TLS Support — Certificate Requirements"
+    url: "https://www.rabbitmq.com/docs/ssl"
+    section: "#peer-verification"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "**/*.pem"
+    - "**/*.crt"
+    - "**/*.cer"
+    - "**/server.pem"
+    - "**/client.pem"
+  prompt: |
+    Parse the X.509 Extended Key Usage extension in each certificate file.
+
+    COMPLIANT if:
+      - Broker/server certificate files contain the id-kp-serverAuth OID
+        (1.3.6.1.5.5.7.3.1).
+      - Client certificate files contain the id-kp-clientAuth OID
+        (1.3.6.1.5.5.7.3.2).
+
+    NON-COMPLIANT if:
+      - A certificate that appears to be a server certificate (referenced in
+        ssl_options.certfile) lacks the serverAuth EKU.
+      - A certificate that appears to be a client certificate lacks the
+        clientAuth EKU.
+
+    NEEDS-HUMAN if:
+      - No certificate files found at the configured paths.
+      - Certificate file is a CA bundle rather than an end-entity certificate.
+      - EKU extension is absent entirely — may be intentional for some
+        CA-internal certificate profiles.
+
+remediation:
+  summary: |
+    Re-issue certificates with the correct EKU extension. For broker certificates
+    include id-kp-serverAuth; for client certificates include id-kp-clientAuth.
+    Verify with: openssl x509 -in cert.pem -noout -text | grep -A2 "Extended Key Usage"
+  template: |
+    # OpenSSL CSR extension for server certificate:
+    extendedKeyUsage = serverAuth
+
+    # OpenSSL CSR extension for client certificate:
+    extendedKeyUsage = clientAuth
+
+known_na_reasons: []

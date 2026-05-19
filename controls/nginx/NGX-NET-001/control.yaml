@@ -1,0 +1,79 @@
+id: NGX-NET-001
+component: nginx
+category: network
+title: "nginx Plus dynamic IP denylist must be maintained via key-value store for real-time blocking"
+description: |
+  Verifies that nginx Plus uses its key-value store and management API to maintain
+  a runtime-mutable IP denylist, enabling incident-response blocking without
+  configuration file edits and reloads. A static deny list in nginx.conf requires
+  a full reload to add entries, which is too slow for threat-feed integration and
+  live incident response. This control is specific to nginx Plus deployments.
+
+severity: medium
+
+applicable_when:
+  deployment_modes: ["nginx-plus"]
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "nginx Admin Guide — Denylisting IP Addresses"
+    url: "https://docs.nginx.com/nginx/admin-guide/security-controls/denylisting-ip-addresses/"
+    accessed_at: "2026-05-17"
+
+check:
+  type: human_review
+  globs:
+    - "**/nginx.conf"
+    - "**/nginx/*.conf"
+    - "**/sites-available/*.conf"
+    - "**/conf.d/*.conf"
+  prompt: |
+    Verify that a dynamic IP denylist mechanism is configured and operational.
+
+    COMPLIANT if:
+      - A keyval_zone is declared for denied IPs keyed on $remote_addr (or
+        $binary_remote_addr).
+      - Location blocks that should enforce the denylist check the keyval variable
+        and return a 403 (or configured block code) when it is set.
+      - The /api/ management endpoint that feeds the denylist is restricted to
+        internal callers (allow internal CIDR; deny all;).
+      - Threat-feed integration or SOC tooling can push entries with TTLs.
+
+    NON-COMPLIANT if:
+      - IP blocking is implemented only via static allow/deny in config files,
+        requiring a reload for each change.
+      - No access restriction is placed on the management API endpoint.
+
+    NEEDS-HUMAN if:
+      - nginx open-source is in use and dynamic blocking is handled by an external
+        WAF or Lua scripting — verify the equivalent mechanism separately.
+      - The management API configuration requires live system inspection.
+
+remediation:
+  summary: |
+    Declare a keyval_zone for blocked IPs, gate request handling on a keyval
+    lookup, and authenticate/restrict the management API endpoint.
+  template: |
+    keyval_zone zone=denylist:1m type=ip state=/var/lib/nginx/denylist.json;
+    keyval $remote_addr $deny_flag zone=denylist;
+
+    server {
+        # Block denied IPs:
+        if ($deny_flag) { return 403; }
+
+        # Protected management API:
+        location /api/ {
+            api write=on;
+            allow 10.0.0.0/8;
+            deny all;
+        }
+    }
+
+known_na_reasons:
+  - id: NA-001
+    reason: |
+      Deployment uses open-source nginx without nginx Plus key-value store.
+      IP blocking is handled by a WAF or upstream firewall.
+    requires_evidence: |
+      Document the dynamic blocking mechanism in use.

@@ -1,0 +1,71 @@
+id: CVF-SCHN-009
+component: cvmfs
+category: supply-chain
+title: "CVMFS signature and hash verification must run at each replication checkpoint"
+description: |
+  Verifies that signature and content-hash verification is enforced at every
+  replication checkpoint along the CVMFS distribution chain — at Stratum 1 mirrors,
+  at preloaded caches, and at the release manager when the backend is S3. Without
+  intermediate verification, compromised content can propagate from one hop to
+  another, accumulating apparent trust by the time it reaches clients. The first
+  detection point becomes the client, after the bad content has already been cached
+  across the infrastructure.
+
+severity: high
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "CernVM-FS — Security Deep Dive"
+    url: "https://cvmfs.readthedocs.io/en/stable/apx-security.html"
+    accessed_at: "2026-05-17"
+
+check:
+  type: human_review
+  globs:
+    - "**/cvmfs_server*.sh"
+    - "**/snapshot*.sh"
+    - "**/replication*.sh"
+    - "**/cvmfs/stratum1*"
+  prompt: |
+    Review replication scripts and tooling configuration for signature verification
+    at Stratum 1 and preload checkpoints.
+
+    COMPLIANT if:
+      - cvmfs_server snapshot invocations on Stratum 1 use the publisher's public
+        key (--key or equivalent configuration) and do not disable verification.
+      - Preload utility invocations include the public key and signature
+        verification is not suppressed.
+      - On S3-backed Stratum 0, the release manager's snapshot step verifies
+        signatures before accepting replicated content.
+      - No -ignore-signature or equivalent flag is present in any replication script.
+
+    NON-COMPLIANT if:
+      - Replication scripts include flags that disable signature verification.
+      - cvmfs_server snapshot is run without key configuration, relying only
+        on transport security.
+
+    NEEDS-HUMAN if:
+      - Replication configuration is distributed across multiple hosts
+        (Stratum 1 servers) and requires SSH access to each to inspect.
+
+remediation:
+  summary: |
+    Configure all replication tooling with the publisher's public key.
+    Audit operational scripts for any flag that suppresses signature checking
+    and remove it.
+  template: |
+    # Stratum 1 snapshot with signature verification:
+    cvmfs_server snapshot <repo.example.org>
+    # Ensure /etc/cvmfs/repositories.d/<repo>/server.conf has CVMFS_PUBLIC_KEY set
+
+    # Verify no bypass flags:
+    grep -r ignore.signature /etc/cvmfs/ /opt/cvmfs-scripts/
+
+known_na_reasons:
+  - id: NA-001
+    reason: |
+      Deployment uses only a single Stratum 0 with no Stratum 1 mirrors or
+      preloaded caches — no intermediate replication points exist.
+    requires_evidence: |
+      Confirm the distribution topology contains no replica servers.

@@ -1,0 +1,74 @@
+id: RMQ-LOG-002
+component: rabbitmq
+category: logging
+title: "RabbitMQ logs must be shipped to a centralized log aggregation system"
+description: |
+  Verifies that RabbitMQ broker logs are forwarded to a centralized log
+  aggregation system (ELK, Loki, Splunk, CloudWatch, etc.) with sufficient
+  retention for security investigation. Local-only logs are lost if the broker
+  host is terminated or its disk fails, and cannot be correlated with logs from
+  other systems during an incident. Authentication failures, permission denials,
+  and broker alarm events are only useful for threat detection if they are
+  retained and queryable outside the broker host.
+
+severity: medium
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "RabbitMQ Logging"
+    url: "https://www.rabbitmq.com/docs/logging"
+    accessed_at: "2026-05-17"
+
+check:
+  type: human_review
+  globs:
+    - "**/rabbitmq.conf"
+    - "**/filebeat*"
+    - "**/fluentd*"
+    - "**/fluent-bit*"
+    - "**/logstash*"
+    - "**/promtail*"
+    - "**/docker-compose*.yml"
+    - "**/*.tf"
+  prompt: |
+    Verify that RabbitMQ logs are shipped to a centralized aggregation system
+    and retained for a sufficient period.
+
+    COMPLIANT if:
+      - A log shipper (Filebeat, Fluentd, Fluent Bit, Promtail, Vector) is
+        configured to forward RabbitMQ log files or the broker's syslog output.
+      - The aggregation system retains logs for at least 90 days.
+      - RabbitMQ is configured to write structured logs (log.file.level = info
+        or higher) to a path accessible to the shipper.
+      - Container deployments route stdout/stderr (RabbitMQ's default log
+        destination) to a container log driver that ships to the aggregator.
+
+    NON-COMPLIANT if:
+      - No log shipper is configured for the broker host or container.
+      - Logs are retained only locally with no off-host copy.
+      - Log retention in the aggregation system is less than 30 days.
+
+    NEEDS-HUMAN if:
+      - Log shipping configuration is managed by a centralized platform team
+        and not visible in repository files — requires verification against
+        the running log pipeline.
+
+remediation:
+  summary: |
+    Deploy a log shipper alongside the broker and configure it to forward
+    RabbitMQ logs to the central aggregation system. Set log.file.level = info
+    in rabbitmq.conf and ensure log rotation does not discard logs before
+    they are shipped.
+  template: |
+    # rabbitmq.conf — ensure file logging is enabled:
+    log.file = /var/log/rabbitmq/rabbit@hostname.log
+    log.file.level = info
+
+    # Filebeat input example:
+    - type: filestream
+      id: rabbitmq
+      paths:
+        - /var/log/rabbitmq/*.log
+
+known_na_reasons: []

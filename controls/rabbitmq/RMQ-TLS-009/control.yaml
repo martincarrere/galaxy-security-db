@@ -1,0 +1,69 @@
+id: RMQ-TLS-009
+component: rabbitmq
+category: crypto-transit
+title: "RabbitMQ must expose an AMQPS TLS listener with a complete certificate configuration"
+description: |
+  Verifies that a TLS listener is configured for AMQP connections (typically port
+  5671) and that the required ssl_options fields — cacertfile, certfile, and keyfile
+  — are all present. Without TLS the broker transmits SASL credentials and message
+  payloads in cleartext, enabling passive eavesdropping and credential theft on any
+  network segment between client and broker.
+
+severity: high
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "RabbitMQ TLS Support"
+    url: "https://www.rabbitmq.com/docs/ssl"
+    section: "#enabling-tls"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "rabbitmq.conf"
+    - "**/rabbitmq.conf"
+    - "**/rabbitmq.conf.d/*.conf"
+  prompt: |
+    Check for ssl_listeners and ssl_options fields.
+
+    COMPLIANT if:
+      - listeners.ssl.default (or ssl_listeners.1) is set to a port value (e.g., 5671).
+      - ssl_options.cacertfile, ssl_options.certfile, and ssl_options.keyfile
+        are all present with non-empty path values.
+
+    NON-COMPLIANT if:
+      - No ssl_listeners or listeners.ssl.default directive is present.
+      - ssl_listeners is set but ssl_options is missing one or more of
+        cacertfile, certfile, keyfile.
+
+    NEEDS-HUMAN if:
+      - TLS is terminated at a load balancer or reverse proxy upstream, and the
+        broker intentionally uses plaintext internally — cannot determine from
+        broker config alone.
+
+remediation:
+  summary: |
+    Add a TLS listener on port 5671 and provide the three required ssl_options
+    paths. Disable the plaintext AMQP listener (5672) or restrict it to loopback
+    only after all clients are migrated to AMQPS.
+  template: |
+    # In rabbitmq.conf:
+    listeners.ssl.default = 5671
+
+    ssl_options.cacertfile = /etc/rabbitmq/ca_certificate.pem
+    ssl_options.certfile   = /etc/rabbitmq/server_certificate.pem
+    ssl_options.keyfile    = /etc/rabbitmq/server_key.pem
+
+    # Optionally disable plaintext listener:
+    # listeners.tcp = none
+
+known_na_reasons:
+  - id: NA-001
+    reason: |
+      TLS is terminated at an upstream load balancer; broker listens only on
+      a private loopback or VPC-internal interface with mutual trust.
+    requires_evidence: |
+      Network topology diagram confirming TLS termination point and internal
+      network trust boundary.

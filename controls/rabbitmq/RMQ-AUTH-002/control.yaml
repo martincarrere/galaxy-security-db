@@ -1,0 +1,70 @@
+id: RMQ-AUTH-002
+component: rabbitmq
+category: secrets
+title: "RabbitMQ default_pass in rabbitmq.conf must be at least 16 characters and must not contain unescaped shell-special characters"
+description: |
+  Verifies that when a default user password is declared in rabbitmq.conf via
+  default_pass, the value is long enough to resist brute-force and free of
+  characters that shell interpreters treat as special ($, `, !, %, &, *, (, ),
+  [, ], {, }, |, ;, <, >, \, ", '). Passwords containing such characters may be
+  silently truncated or misinterpreted when passed to rabbitmqctl at node startup,
+  producing a weaker effective credential than the operator intends.
+
+severity: high
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "RabbitMQ Access Control — Passwords"
+    url: "https://www.rabbitmq.com/docs/access-control"
+    section: "#passwords"
+    version: "3.x"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "rabbitmq.conf"
+    - "**/rabbitmq.conf"
+    - "**/rabbitmq.conf.d/*.conf"
+  prompt: |
+    Locate the `default_pass` directive in the file.
+
+    COMPLIANT if any of:
+      - `default_pass` is absent — no file-based default credential is defined,
+        meaning the operator relies on external secret injection (environment
+        variable, vault, Kubernetes secret); this is the preferred posture.
+      - `default_pass` is present, the value is >= 16 characters, and the value
+        contains only alphanumeric characters plus the safe special characters
+        `:` and `=` (i.e. none of: $ ` ! % & * ( ) [ ] { } | ; < > \ " ' space tab).
+
+    NON-COMPLIANT if any of:
+      - `default_pass` is present and the value is fewer than 16 characters.
+      - `default_pass` is present and the value contains any of the shell-special
+        characters: $ ` ! % & * ( ) [ ] { } | ; < > \ " ' (unquoted or inside
+        a plaintext value field).
+      - `default_pass = guest` (the factory default).
+
+    NEEDS-HUMAN if:
+      - `default_pass` references an environment variable placeholder
+        (e.g. `$(VAR)`, `${VAR}`, `$(rabbitmq-env VAR)`) and the expanded value
+        cannot be determined statically from the file.
+      - The file uses include directives and the actual default_pass line is in
+        an included file not present in the glob results.
+
+remediation:
+  summary: |
+    Remove default_pass from rabbitmq.conf entirely and inject the credential at
+    runtime via the RABBITMQ_DEFAULT_PASS environment variable (populated from a
+    secret store). If a file-based value is required, generate a random 40-100
+    character string containing only alphanumeric characters plus `:` and `=`,
+    and set it in rabbitmq.conf. Never use the factory default "guest".
+  template: |
+    # Preferred: inject via environment variable, omit from file entirely
+    # RABBITMQ_DEFAULT_PASS is read at startup from the process environment.
+
+    # If a file value is required, use a shell-safe long credential:
+    default_user = ops-admin
+    default_pass = aB3dE6gH9kL2mN5pQ8rS1tU4vW7xY0zA3bC6eF9hJ2kM5nP8qR1sT4
+
+known_na_reasons: []

@@ -1,0 +1,82 @@
+id: RMQ-RES-008
+component: rabbitmq
+category: resource-controls
+title: "Consumer prefetch (QoS) must be configured to prevent unbounded message accumulation in consumers"
+description: |
+  Verifies that all consumers set a non-zero basic.qos prefetch count to limit
+  the number of unacknowledged messages delivered to a single consumer.
+  Without a prefetch limit, RabbitMQ delivers all queued messages to the first
+  available consumer; if that consumer is slow or crashes while holding many
+  messages, it monopolizes the queue and causes head-of-line blocking for all
+  other consumers. On CloudAMQP, unacknowledged message accumulation counts
+  against memory quotas and can trigger flow control for all publishers.
+
+severity: medium
+
+applicable_when:
+  deployment_modes: ["cloudamqp", "self-hosted"]
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "RabbitMQ Consumer Prefetch"
+    url: "https://www.rabbitmq.com/docs/consumer-prefetch"
+    accessed_at: "2026-05-17"
+  - type: vendor_doc
+    authority: medium
+    title: "CloudAMQP Blog — Prefetch and Consumer QoS"
+    url: "https://www.cloudamqp.com/blog/how-to-optimize-the-rabbitmq-prefetch-count.html"
+    accessed_at: "2026-05-17"
+
+check:
+  type: human_review
+  globs:
+    - "**/*.java"
+    - "**/*.py"
+    - "**/*.js"
+    - "**/*.ts"
+    - "**/application.properties"
+    - "**/application.yml"
+    - "**/application.yaml"
+  prompt: |
+    Review consumer application code and configuration for basic.qos prefetch settings.
+
+    COMPLIANT if:
+      - All consumer applications set basic.qos with a prefetch_count > 0 before
+        starting consumption (channel.basic_qos() / channel.prefetch() equivalent).
+      - Prefetch count is tuned relative to message processing time: short-lived
+        messages use higher values (e.g., 50-200), slow/heavy processing uses
+        lower values (e.g., 1-10).
+      - Spring AMQP or framework-level config sets prefetchCount / prefetch
+        to a non-zero value.
+
+    NON-COMPLIANT if:
+      - Consumer code calls basic_consume without a prior basic_qos call.
+      - Prefetch count is explicitly set to 0 (unlimited).
+      - No prefetch configuration found in any consumer application.
+
+    NEEDS-HUMAN if:
+      - Consumer application source code is not available for review —
+        requires inspection of the running application configuration or
+        interview with the development team.
+      - Framework abstracts prefetch configuration and the effective value
+        cannot be determined from config files.
+
+remediation:
+  summary: |
+    Add a basic.qos call with a non-zero prefetch count before starting each
+    consumer. Start with a low value (e.g., 10) and tune upward based on
+    measured throughput. For CloudAMQP, set per-consumer prefetch to avoid
+    memory pressure from unacknowledged message accumulation.
+  template: |
+    # Python (pika):
+    channel.basic_qos(prefetch_count=10)
+    channel.basic_consume(queue='my-queue', on_message_callback=callback)
+
+    # Java (Spring AMQP application.properties):
+    spring.rabbitmq.listener.simple.prefetch=10
+
+    # Java (raw client):
+    channel.basicQos(10);
+
+known_na_reasons: []

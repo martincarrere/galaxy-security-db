@@ -1,0 +1,68 @@
+id: NGX-TLS-005
+component: nginx
+category: crypto-transit
+title: "TCP stream listeners must terminate TLS before proxying to backend services"
+description: |
+  Verifies that nginx stream module listeners that front sensitive TCP services
+  (message brokers, databases, interactive tool sockets) are configured with TLS
+  termination. Without TLS on the stream proxy, the entire byte flow of the
+  proxied protocol — including credentials and payload data — traverses the network
+  in cleartext from client to nginx.
+
+severity: high
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "nginx Admin Guide — Terminating SSL for TCP"
+    url: "https://docs.nginx.com/nginx/admin-guide/security-controls/terminating-ssl-tcp/"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "**/nginx.conf"
+    - "**/nginx/*.conf"
+    - "**/stream.conf"
+    - "**/conf.d/*.conf"
+  prompt: |
+    Inspect stream {} server blocks for TLS configuration on listeners that
+    front sensitive TCP services.
+
+    COMPLIANT if:
+      - Every stream server block that fronts a sensitive service has
+        listen <port> ssl; with matching ssl_certificate and ssl_certificate_key.
+      - ssl_protocols and ssl_ciphers restrict the protocol to TLS 1.2+ and
+        a strong cipher list.
+      - The private key file has restricted permissions (0600/0640).
+
+    NON-COMPLIANT if:
+      - A stream server block fronts a sensitive TCP backend with a plain
+        listen <port>; directive (no ssl).
+      - ssl is configured but ssl_certificate or ssl_certificate_key is absent.
+
+    NEEDS-HUMAN if:
+      - No stream {} blocks are present — control is not applicable to this
+        deployment (only HTTP proxying in use).
+
+remediation:
+  summary: |
+    Add ssl to each stream server listen directive that fronts a sensitive
+    service, and provide ssl_certificate and ssl_certificate_key paths.
+  template: |
+    stream {
+        server {
+            listen 5671 ssl;
+            ssl_certificate /etc/nginx/ssl/server.crt;
+            ssl_certificate_key /etc/nginx/ssl/server.key;
+            ssl_protocols TLSv1.2 TLSv1.3;
+            proxy_pass rabbitmq-upstream:5672;
+        }
+    }
+
+known_na_reasons:
+  - id: NA-001
+    reason: |
+      No stream module listeners are in use in this deployment.
+    requires_evidence: |
+      Confirm no stream {} blocks are present in any nginx configuration.

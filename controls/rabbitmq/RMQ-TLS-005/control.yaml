@@ -1,0 +1,68 @@
+id: RMQ-TLS-005
+component: rabbitmq
+category: auth
+title: "RabbitMQ trust store plugin must be enabled when individual client certificate allowlisting is required"
+description: |
+  Verifies that the rabbitmq_trust_store plugin is present in enabled_plugins
+  for deployments that require individual client certificate allowlisting rather
+  than full CA-wide trust. Without the trust store plugin, any certificate issued
+  by a trusted CA is accepted, preventing per-device certificate revocation without
+  CRL or OCSP infrastructure.
+
+severity: medium
+
+applicable_when:
+  deployment_modes: ["iot", "device-per-certificate"]
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "RabbitMQ TLS Support — Trust Store Plugin"
+    url: "https://www.rabbitmq.com/docs/ssl"
+    section: "#peer-verification-trusted-certificates"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "enabled_plugins"
+    - "**/enabled_plugins"
+  prompt: |
+    Check whether rabbitmq_trust_store appears in the enabled_plugins list.
+
+    COMPLIANT if:
+      - rabbitmq_trust_store is listed in enabled_plugins.
+
+    NON-COMPLIANT if:
+      - enabled_plugins is present and does not include rabbitmq_trust_store,
+        AND the deployment context indicates individual device/client certificate
+        allowlisting is required.
+
+    NEEDS-HUMAN if:
+      - enabled_plugins is absent.
+      - Whether individual certificate allowlisting is required cannot be
+        determined from the file alone (standard CA-based peer verification
+        may be sufficient — this control is only applicable to IoT/device
+        certificate scenarios).
+
+remediation:
+  summary: |
+    Enable the trust_store plugin and load individual client certificates into the
+    trust store directory. Configure the trust store path in the broker configuration.
+    For standard server-to-server TLS, CA-based verification is preferred and this
+    plugin is not required.
+  template: |
+    # In enabled_plugins file:
+    [rabbitmq_management,rabbitmq_trust_store].
+
+    # In rabbitmq.conf:
+    trust_store.directory = /etc/rabbitmq/trust_store_certs
+    trust_store.refresh_interval = 30
+
+known_na_reasons:
+  - id: NA-001
+    reason: |
+      Deployment uses standard CA-based peer verification (server-to-server).
+      Individual certificate allowlisting is not required.
+    requires_evidence: |
+      Confirm deployment uses a managed PKI where CA-wide trust is acceptable.

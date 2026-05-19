@@ -1,0 +1,59 @@
+id: CVF-SCHN-003
+component: cvmfs
+category: supply-chain
+title: "CVMFS repository manifest must be signed with an RSA-backed X.509 certificate"
+description: |
+  Verifies that each published .cvmfspublished manifest carries a valid RSA
+  signature produced with the repository's private key, and that the matching
+  X.509 signing certificate is published inside the repository so clients can
+  validate the signature without out-of-band certificate distribution. The manifest
+  signature is the root of CVMFS's Merkle-tree trust chain; an unsigned or weakly
+  signed manifest removes the ability to detect any tampering at the catalog level.
+
+severity: high
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "CernVM-FS — Security Deep Dive"
+    url: "https://cvmfs.readthedocs.io/en/stable/apx-security.html"
+    accessed_at: "2026-05-17"
+
+check:
+  type: human_review
+  globs:
+    - "**/.cvmfspublished"
+    - "**/data/**/*.x509"
+  prompt: |
+    Verify that the published manifest carries a valid RSA signature and that
+    the signing certificate is present in the repository.
+
+    COMPLIANT if:
+      - A .cvmfspublished manifest is present and its S= (signature) field
+        contains a non-empty base64-encoded signature.
+      - The signing certificate referenced by X= is present and fetchable from
+        the repository data directory.
+      - The certificate chain-verifies against the whitelist master key.
+      - cvmfs_server verify --repository <name> passes without signature errors.
+
+    NON-COMPLIANT if:
+      - The S= field is absent or empty in .cvmfspublished.
+      - The signing certificate referenced by X= is missing or inaccessible.
+
+    NEEDS-HUMAN if:
+      - Signature verification requires running cvmfs_server verify on the
+        Stratum 0 host — cannot be determined from config files alone.
+
+remediation:
+  summary: |
+    Use the standard cvmfs_server publish workflow to sign manifests.
+    Ensure the signing private key and certificate are accessible to the
+    publish toolchain and that the certificate is published in the repository.
+  template: |
+    # Verify repository signing on Stratum 0:
+    cvmfs_server verify --repository <repo.example.org>
+
+    # Check signing certificate presence:
+    ls /srv/cvmfs/<repo>/data/*/  # should include .x509 certificate files
+
+known_na_reasons: []

@@ -1,0 +1,76 @@
+id: RMQ-AUTH-010
+component: rabbitmq
+category: auth
+title: "Each application must authenticate with a dedicated RabbitMQ user account"
+description: |
+  Verifies that every distinct application or service that connects to RabbitMQ
+  uses its own dedicated user account rather than sharing credentials with other
+  applications or using the administrator account for normal messaging operations.
+  Shared credentials prevent per-application audit trails, make credential
+  rotation disruptive, and mean that a compromised application credential gives
+  access to all queues and exchanges accessible to the shared user. Dedicated
+  accounts combined with per-vhost permissions enforce least-privilege isolation
+  between application components.
+
+severity: medium
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "RabbitMQ Access Control — User Management"
+    url: "https://www.rabbitmq.com/docs/access-control"
+    section: "#user-management"
+    accessed_at: "2026-05-17"
+
+check:
+  type: human_review
+  globs:
+    - "**/definitions.json"
+    - "**/rabbitmq.conf"
+    - "**/application.properties"
+    - "**/application.yml"
+    - "**/application.yaml"
+    - "**/*.env"
+    - "**/.env*"
+  prompt: |
+    Review the RabbitMQ user list and application connection configuration to
+    determine whether each application uses a dedicated credential.
+
+    COMPLIANT if:
+      - Each distinct application or service has a unique named user account
+        in definitions.json or the broker user list (e.g., app-orders, app-inventory,
+        app-notifications — not a shared "app" user).
+      - No application connects using the administrator account or a shared
+        generic account.
+      - Application configuration files reference distinct username values per
+        service rather than a single shared AMQP URI.
+
+    NON-COMPLIANT if:
+      - Multiple distinct applications share the same RabbitMQ username and password.
+      - Applications connect using an administrator account (tags: administrator).
+      - Only one non-guest user exists in the broker user list despite multiple
+        consuming and publishing services.
+
+    NEEDS-HUMAN if:
+      - The full list of applications and their credential mappings requires
+        cross-referencing application deployment configs not available in
+        the repository — requires interview with the development team.
+      - definitions.json is not available and the broker user list must be
+        retrieved via rabbitmqctl list_users on the live system.
+
+remediation:
+  summary: |
+    Create a dedicated user per application with permissions scoped to only
+    the vhosts, exchanges, and queues that application needs. Remove or
+    disable any shared generic accounts used by multiple services. Distribute
+    per-application credentials via a secret manager rather than shared config.
+  template: |
+    # Create a dedicated user per application:
+    rabbitmqctl add_user app-orders <strong-password>
+    rabbitmqctl set_permissions -p /production app-orders \
+      "^app-orders\." "^(app-orders\.|amq\.default)" "^app-orders\."
+
+    # Confirm no applications share the same user:
+    rabbitmqctl list_connections user vhost name
+
+known_na_reasons: []

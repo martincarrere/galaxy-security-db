@@ -1,0 +1,78 @@
+id: NGX-AUTH-005
+component: nginx
+category: auth
+title: "JWT signature and claims must be validated at the nginx edge before reaching upstreams"
+description: |
+  Verifies that nginx validates JSON Web Token signatures and required claims at
+  the proxy edge for API locations that require JWT authentication. Edge-level JWT
+  validation prevents forged or expired tokens from reaching backend services and
+  centralizes token verification rather than requiring each upstream to re-implement
+  it. This is a native feature of nginx Plus; open-source nginx requires a third-party
+  module or Lua scripting for equivalent functionality.
+
+severity: medium
+
+applicable_when:
+  deployment_modes: ["nginx-plus"]
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "nginx Admin Guide — JWT Authentication"
+    url: "https://docs.nginx.com/nginx/admin-guide/security-controls/configuring-jwt-authentication/"
+    accessed_at: "2026-05-17"
+
+check:
+  type: human_review
+  globs:
+    - "**/nginx.conf"
+    - "**/nginx/*.conf"
+    - "**/sites-available/*.conf"
+    - "**/conf.d/*.conf"
+  prompt: |
+    Verify that JWT authentication is configured for API locations that require it.
+
+    COMPLIANT if:
+      - Locations requiring JWT authentication have auth_jwt "<realm>"; configured.
+      - auth_jwt_key_request or auth_jwt_key_file is configured to provide the
+        signing key(s) from a trusted JWKS endpoint or local file.
+      - Required claims are enforced via auth_jwt_claim_set or equivalent.
+      - Requests with missing, malformed, or expired tokens receive a 401 response.
+
+    NON-COMPLIANT if:
+      - API locations that should require JWT authentication have no auth_jwt
+        directive or equivalent protection.
+      - The JWT validation accepts tokens signed with none or with keys
+        not sourced from the configured trusted JWKS endpoint.
+
+    NEEDS-HUMAN if:
+      - nginx Plus is not in use and JWT validation is implemented via a
+        third-party module or Lua — requires review of the module configuration.
+      - The JWKS endpoint is internal and cannot be verified from config files alone.
+
+remediation:
+  summary: |
+    Configure auth_jwt on each protected API location and point auth_jwt_key_request
+    at the IdP's JWKS endpoint. Require specific audience (aud) and issuer (iss)
+    claims to prevent token reuse across services.
+  template: |
+    # nginx Plus JWT validation:
+    location /api/ {
+        auth_jwt "API";
+        auth_jwt_key_request /_jwks_uri;
+        auth_jwt_claim_set $jwt_claim_sub sub;
+        proxy_set_header X-User $jwt_claim_sub;
+        proxy_pass http://api-upstream;
+    }
+    location = /_jwks_uri {
+        internal;
+        proxy_pass https://idp.example.com/.well-known/jwks.json;
+    }
+
+known_na_reasons:
+  - id: NA-001
+    reason: |
+      Deployment uses open-source nginx without JWT module or does not require
+      JWT-based authentication.
+    requires_evidence: |
+      Document the authentication mechanism used for API endpoints.

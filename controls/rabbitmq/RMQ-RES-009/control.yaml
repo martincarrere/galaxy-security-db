@@ -1,0 +1,52 @@
+id: RMQ-RES-009
+component: rabbitmq
+category: resource-controls
+title: "RabbitMQ must explicitly configure heartbeat, consumer_timeout, and memory watermark"
+description: |
+  Verifies that the three core runtime tuning parameters — vm_memory_high_watermark,
+  heartbeat (or heartbeat_timeout), and consumer_timeout — are explicitly set in
+  rabbitmq.conf. Relying on defaults for all three leaves the broker vulnerable to
+  slow-loris connections (no heartbeat), hung consumers blocking queue draining
+  indefinitely (no consumer_timeout), and uncontrolled memory growth (no watermark).
+
+severity: medium
+
+sources:
+  - type: community
+    authority: medium
+    title: "CloudAMQP — RabbitMQ Production Checklist"
+    url: "https://www.cloudamqp.com/blog/rabbitmq-checklist-for-production-environments-a-complete-guide.html"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "rabbitmq.conf"
+    - "**/rabbitmq.conf"
+    - "**/rabbitmq.conf.d/*.conf"
+  prompt: |
+    Check for the three key tuning parameters.
+
+    COMPLIANT if:
+      - All three are explicitly set: vm_memory_high_watermark (relative or absolute),
+        heartbeat (or heartbeat_timeout), and consumer_timeout.
+
+    NON-COMPLIANT if:
+      - All three are absent — all defaults in effect.
+
+    NEEDS-HUMAN if:
+      - One or two of the three are configured but not all — partial configuration
+        that may still leave risk depending on which are missing.
+
+remediation:
+  summary: |
+    Set all three parameters to values appropriate for the workload. The specific
+    values are workload-dependent; document the rationale for chosen values.
+    Review and revisit when workload characteristics change.
+  template: |
+    # In rabbitmq.conf:
+    vm_memory_high_watermark.relative = 0.5
+    heartbeat                          = 60
+    consumer_timeout                   = 1800000
+
+known_na_reasons: []

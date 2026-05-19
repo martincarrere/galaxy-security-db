@@ -1,0 +1,57 @@
+id: CVF-SCHN-008
+component: cvmfs
+category: supply-chain
+title: "CVMFS software packages must be installed from HTTPS distribution endpoints"
+description: |
+  Verifies that the package manager sources used to install CernVM-FS software
+  use HTTPS URLs exclusively. Installing CVMFS packages over plain HTTP exposes
+  the installation to a network attacker who can substitute a backdoored package
+  before any in-product integrity check applies. This control concerns the CVMFS
+  software itself, not the content it distributes.
+
+severity: high
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "CernVM-FS — Security Deep Dive"
+    url: "https://cvmfs.readthedocs.io/en/stable/apx-security.html"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "**/sources.list.d/cvmfs*"
+    - "**/apt/sources.list.d/*.list"
+    - "**/yum.repos.d/cernvm*.repo"
+    - "**/yum.repos.d/cvmfs*.repo"
+    - "**/*.repo"
+  prompt: |
+    Inspect all CVMFS-related package source URLs for HTTP vs HTTPS scheme.
+
+    COMPLIANT if:
+      - All apt sources or yum/dnf repo baseurl / metalink / mirrorlist values
+        for CVMFS packages use the https:// scheme.
+      - No CVMFS package source entry uses http:// (unencrypted).
+
+    NON-COMPLIANT if:
+      - Any apt source or yum .repo file for CernVM-FS uses an http:// URL.
+
+    NEEDS-HUMAN if:
+      - Package sources are generated dynamically by an Ansible role or
+        config management template — verify the rendered source file on
+        the target host.
+
+remediation:
+  summary: |
+    Replace any http:// URLs in CVMFS package source configuration with
+    https:// equivalents. In Ansible roles, update the repository URL
+    variable to the HTTPS endpoint.
+  template: |
+    # Debian/Ubuntu /etc/apt/sources.list.d/cvmfs.list — must use https:
+    deb [signed-by=...] https://ecsft.cern.ch/dist/cvmfs/cvmfs-release/deb/ubuntu focal main
+
+    # RHEL /etc/yum.repos.d/cernvm.repo:
+    # baseurl=https://ecsft.cern.ch/dist/cvmfs/cvmfs-release/rpm/...
+
+known_na_reasons: []

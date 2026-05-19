@@ -1,0 +1,64 @@
+id: RMQ-RES-004
+component: rabbitmq
+category: resource-controls
+title: "RabbitMQ must configure broker-level limits on connections, channels, and message size"
+description: |
+  Verifies that rabbitmq.conf declares at least one explicit resource limit —
+  max_connections, channel_max, or max_message_size — or that definitions.json
+  contains vhost or user limits. A broker without configured ceilings accepts
+  unbounded connections, channels, queues, and arbitrarily large messages until
+  an underlying OS limit fails, enabling resource-exhaustion denial of service by
+  a misbehaving or malicious client.
+
+severity: medium
+
+sources:
+  - type: community
+    authority: medium
+    title: "CloudAMQP — RabbitMQ Production Checklist"
+    url: "https://www.cloudamqp.com/blog/rabbitmq-checklist-for-production-environments-a-complete-guide.html"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "rabbitmq.conf"
+    - "**/rabbitmq.conf"
+    - "**/rabbitmq.conf.d/*.conf"
+    - "definitions.json"
+    - "**/definitions.json"
+  prompt: |
+    Check for explicit resource limit directives in rabbitmq.conf and
+    vhost/user limits in definitions.json.
+
+    COMPLIANT if:
+      - rabbitmq.conf contains at least one of: max_connections, channel_max,
+        max_message_size (set to a non-zero value).
+      - OR definitions.json contains at least one vhost_limits or user_limits entry.
+
+    NON-COMPLIANT if:
+      - rabbitmq.conf contains none of max_connections, channel_max,
+        max_message_size AND definitions.json has no vhost_limits or user_limits.
+
+    NEEDS-HUMAN if:
+      - Neither file is present — cannot determine if limits are configured.
+
+remediation:
+  summary: |
+    Set broker-level limits reflecting realistic application requirements. Start
+    with max_connections and channel_max in rabbitmq.conf, then add per-vhost
+    and per-user limits in definitions.json for multi-tenant deployments.
+  template: |
+    # In rabbitmq.conf:
+    max_connections = 10000
+    channel_max     = 128
+    max_message_size = 134217728
+
+    # In definitions.json vhost_limits:
+    {
+      "vhost_limits": [
+        { "vhost": "app-vhost", "value": { "max-connections": 500, "max-queues": 200 } }
+      ]
+    }
+
+known_na_reasons: []

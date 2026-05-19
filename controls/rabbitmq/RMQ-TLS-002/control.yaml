@@ -1,0 +1,61 @@
+id: RMQ-TLS-002
+component: rabbitmq
+category: crypto-transit
+title: "RabbitMQ TLS must use an explicit cipher suite list with server-side ordering enforced"
+description: |
+  Verifies that ssl_options.ciphers is explicitly set and that
+  ssl_options.honor_cipher_order is true. Without server-side ordering, a
+  malicious or misconfigured client can propose weak cipher suites and the broker
+  may accept them, resulting in connections protected by cryptographically weak
+  algorithms even when stronger suites are available.
+
+severity: high
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "RabbitMQ TLS Support — Cipher Suites"
+    url: "https://www.rabbitmq.com/docs/ssl"
+    section: "#cipher-suites"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "rabbitmq.conf"
+    - "**/rabbitmq.conf"
+    - "**/advanced.config"
+    - "**/rabbitmq.conf.d/*.conf"
+  prompt: |
+    Locate ssl_options.ciphers and ssl_options.honor_cipher_order.
+
+    COMPLIANT if:
+      - ssl_options.honor_cipher_order = true is present.
+      - ssl_options.ciphers is explicitly set (non-empty list of cipher suite names).
+
+    NON-COMPLIANT if:
+      - ssl_options.honor_cipher_order = false is set.
+      - ssl_options.ciphers is absent (no explicit cipher list defined).
+      - The cipher list includes known-weak suites: EXPORT, NULL, anon, RC4,
+        DES, 3DES, or MD5-based suites.
+
+    NEEDS-HUMAN if:
+      - ssl_options.ciphers is present but its syntax cannot be fully parsed
+        from the file (e.g., multi-line advanced.config format).
+
+remediation:
+  summary: |
+    Enumerate an explicit cipher suite list in ssl_options.ciphers excluding
+    export-grade, null, anonymous, and RC4 suites. Set honor_cipher_order = true
+    so the broker's preference governs negotiation. Also set honor_ecc_order = true
+    when ECC suites are included.
+  template: |
+    # In rabbitmq.conf:
+    ssl_options.honor_cipher_order   = true
+    ssl_options.honor_ecc_order      = true
+    ssl_options.ciphers.1 = TLS_AES_256_GCM_SHA384
+    ssl_options.ciphers.2 = TLS_AES_128_GCM_SHA256
+    ssl_options.ciphers.3 = ECDHE-ECDSA-AES256-GCM-SHA384
+    ssl_options.ciphers.4 = ECDHE-RSA-AES256-GCM-SHA384
+
+known_na_reasons: []

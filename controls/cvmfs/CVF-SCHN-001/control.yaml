@@ -1,0 +1,57 @@
+id: CVF-SCHN-001
+component: cvmfs
+category: supply-chain
+title: "CVMFS repositories must use a strong content-hash algorithm and plan migration from SHA-1"
+description: |
+  Verifies that CVMFS repositories are configured to use a content-hash algorithm
+  stronger than SHA-1 for new publishes, and that a migration plan exists for
+  repositories still on the SHA-1 default. CVMFS content hashes feed the signed
+  Merkle tree; SHA-1 is collision-vulnerable and an attacker who can produce a
+  hash collision could substitute file content while preserving a valid
+  manifest-level signature.
+
+severity: medium
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "CernVM-FS — Security Deep Dive"
+    url: "https://cvmfs.readthedocs.io/en/stable/apx-security.html"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "**/server.conf"
+    - "**/repositories.d/**/server.conf"
+    - "**/.cvmfspublished"
+  prompt: |
+    Inspect CVMFS repository server.conf for the content-hash algorithm setting.
+
+    COMPLIANT if:
+      - CVMFS_HASH_ALGORITHM is set in server.conf to a non-SHA-1 algorithm
+        (e.g., shake128, rmd160) for each production repository.
+      - A migration plan or tracking document exists for repositories where
+        SHA-1 content is still present from prior publishes.
+
+    NON-COMPLIANT if:
+      - CVMFS_HASH_ALGORITHM is absent (defaulting to SHA-1) in all server.conf files.
+      - CVMFS_HASH_ALGORITHM is explicitly set to sha1.
+
+    NEEDS-HUMAN if:
+      - The actual algorithm in use requires reading the .cvmfspublished manifest
+        on the live Stratum 0 host to check the per-file hash prefix.
+
+remediation:
+  summary: |
+    Set CVMFS_HASH_ALGORITHM=shake128 in server.conf for each repository,
+    confirm client cvmfs versions support the chosen algorithm, then
+    republish the repository to apply the new algorithm to new content.
+  template: |
+    # /srv/cvmfs/<repo>/server.conf:
+    CVMFS_HASH_ALGORITHM=shake128
+
+    # Verify client support:
+    cvmfs2 --version  # must be >= 2.9 for SHAKE-128
+
+known_na_reasons: []

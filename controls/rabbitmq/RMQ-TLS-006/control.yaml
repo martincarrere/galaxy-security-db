@@ -1,0 +1,61 @@
+id: RMQ-TLS-006
+component: rabbitmq
+category: supply-chain
+title: "RabbitMQ must run on the most recent supported Erlang/OTP release for TLS quality"
+description: |
+  Verifies that the deployed Erlang/OTP version is on the most recent release
+  supported by the installed RabbitMQ version. RabbitMQ's entire TLS implementation
+  is provided by the Erlang/OTP ssl application; older releases have incomplete ECC
+  support, lack TLSv1.3, and contain unpatched TLS vulnerabilities. The quality of
+  all TLS connections is bounded by the Erlang/OTP version in use.
+
+severity: medium
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "RabbitMQ TLS Support — Erlang/OTP Version Requirements"
+    url: "https://www.rabbitmq.com/docs/ssl"
+    section: "#erlang-otp-version"
+    accessed_at: "2026-05-17"
+
+check:
+  type: human_review
+  globs:
+    - "**/rabbitmq.conf"
+    - "**/Dockerfile"
+    - "**/docker-compose*.yml"
+    - "**/*.spec"
+    - "**/requirements*.txt"
+  prompt: |
+    Determine the deployed Erlang/OTP version and compare against the supported
+    version matrix for the installed RabbitMQ version.
+
+    COMPLIANT if:
+      - The Erlang/OTP version in use is the most recent release supported by the
+        installed RabbitMQ version per the official compatibility matrix at
+        https://www.rabbitmq.com/docs/which-erlang.
+      - Dockerfile, package spec, or deployment manifest pins Erlang/OTP to a
+        specific recent supported version.
+
+    NON-COMPLIANT if:
+      - The deployed Erlang/OTP version is older than the most recent supported
+        release for the installed RabbitMQ version.
+      - No version pinning is in place and the runtime version is unknown.
+
+    NEEDS-HUMAN if:
+      - Version cannot be determined from available files — requires running
+        rabbitmqctl status on the live broker.
+
+remediation:
+  summary: |
+    Upgrade Erlang/OTP to the most recent release supported by the installed
+    RabbitMQ version. Include Erlang/OTP in the regular patch management cycle
+    alongside RabbitMQ. Consult https://www.rabbitmq.com/docs/which-erlang
+    before each upgrade.
+  template: |
+    # Example: pinning Erlang/OTP in a Dockerfile:
+    FROM rabbitmq:3.13-management
+    # RabbitMQ 3.13 supports Erlang/OTP 26.x — ensure base image uses latest 26.x
+
+known_na_reasons: []

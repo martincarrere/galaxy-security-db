@@ -1,0 +1,67 @@
+id: NGX-TB-002
+component: nginx
+category: trust-boundary
+title: "X-Accel-Redirect download location must be marked internal to prevent direct client access"
+description: |
+  Verifies that the nginx location used for X-Accel-Redirect dataset downloads
+  is marked with the internal directive, ensuring it is only reachable via an
+  internal redirect from Galaxy and cannot be accessed directly by clients.
+  Without the internal directive, any client who knows or guesses the internal
+  download path can bypass Galaxy's authorization and retrieve arbitrary dataset
+  files directly, circumventing all access controls.
+
+severity: medium
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "Galaxy Project — nginx Configuration"
+    url: "https://docs.galaxyproject.org/en/master/admin/nginx.html"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "**/nginx.conf"
+    - "**/nginx/*.conf"
+    - "**/sites-available/*.conf"
+    - "**/conf.d/*.conf"
+  prompt: |
+    Locate the X-Accel-Redirect location block and verify the internal directive.
+
+    COMPLIANT if:
+      - A location block exists with an alias pointing to Galaxy's files_path.
+      - That location block contains the internal; directive.
+      - The alias path matches the path prefix in Galaxy's X-Accel-Redirect
+        header value (e.g., /_x_accel_redirect/).
+      - The nginx worker user has read access to Galaxy's files_path via group
+        membership (see NGX-FS-002).
+
+    NON-COMPLIANT if:
+      - The X-Accel-Redirect alias location is missing the internal; directive,
+        making it directly reachable from clients via HTTP.
+      - No X-Accel-Redirect location is configured and Galaxy serves downloads
+        by passing file bytes directly through application workers.
+
+    NEEDS-HUMAN if:
+      - X-Accel-Redirect is configured in application code (galaxy.ini or
+        galaxy.yml) but the matching nginx location cannot be found in static
+        config — requires live verification.
+
+remediation:
+  summary: |
+    Add internal; to the location block that aliases Galaxy's files_path and
+    is used for X-Accel-Redirect downloads.
+  template: |
+    location /_x_accel_redirect/ {
+        internal;
+        alias /data/galaxy/files/;
+    }
+
+known_na_reasons:
+  - id: NA-001
+    reason: |
+      Galaxy uses a different file serving mechanism (e.g., object storage
+      presigned URLs) and X-Accel-Redirect is not in use.
+    requires_evidence: |
+      Document the file serving and authorization mechanism in use.

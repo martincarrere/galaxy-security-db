@@ -1,0 +1,51 @@
+id: RMQ-RES-005
+component: rabbitmq
+category: resource-controls
+title: "RabbitMQ channel_max must be explicitly set to limit channel count per connection"
+description: |
+  Verifies that channel_max is explicitly configured in rabbitmq.conf. Each AMQP
+  channel consumes bookkeeping state on both client and broker. A client that opens
+  many channels per connection creates a per-connection amplification of resource
+  consumption. Setting channel_max bounds the worst-case channel count for any single
+  session, limiting the impact of a buggy or malicious client.
+
+severity: medium
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "RabbitMQ Production Checklist — Channels"
+    url: "https://www.rabbitmq.com/docs/production-checklist"
+    section: "#channel-count"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "rabbitmq.conf"
+    - "**/rabbitmq.conf"
+    - "**/rabbitmq.conf.d/*.conf"
+  prompt: |
+    Locate channel_max in rabbitmq.conf.
+
+    COMPLIANT if:
+      - channel_max is explicitly set to a non-zero positive integer.
+
+    NON-COMPLIANT if:
+      - channel_max is absent (default: 0, meaning unlimited).
+      - channel_max = 0 (explicitly unlimited).
+
+    NEEDS-HUMAN if:
+      - channel_max is set to a very large value (> 10000) that may effectively
+        be unlimited for the workload.
+
+remediation:
+  summary: |
+    Set channel_max to a value that covers the maximum legitimate channel count
+    for the most demanding client session. Typical values are 16-256 for
+    well-behaved applications. Combine with per-user channel limits where supported.
+  template: |
+    # In rabbitmq.conf:
+    channel_max = 128
+
+known_na_reasons: []

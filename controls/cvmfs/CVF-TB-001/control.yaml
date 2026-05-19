@@ -1,0 +1,61 @@
+id: CVF-TB-001
+component: cvmfs
+category: trust-boundary
+title: "CVMFS local cache directory must be owned by the cvmfs user with mode 0700"
+description: |
+  Verifies that the CVMFS local client cache directory is owned by the cvmfs user
+  with mode 0700, and that it is placed on local, non-shared storage. Once a file
+  has been verified and stored in the cache, the client does not re-verify it on
+  subsequent reads. The cache directory is therefore inside the trust boundary:
+  any process that can write to it can substitute file content that the client
+  will serve without re-checking the signature.
+
+severity: high
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "CernVM-FS — Security Deep Dive"
+    url: "https://cvmfs.readthedocs.io/en/stable/apx-security.html"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "**/etc/cvmfs/default.local"
+    - "**/etc/cvmfs/config.d/*.conf"
+    - "**/cvmfs/*.conf"
+    - "**/ansible/**"
+  prompt: |
+    Verify CVMFS_CACHE_BASE configuration and infer cache directory ownership.
+
+    COMPLIANT if:
+      - CVMFS_CACHE_BASE in default.local or equivalent points to a path on
+        local, non-shared storage (not on NFS, CIFS, or multi-tenant volume).
+      - Ansible role or provisioning config sets the cache directory ownership
+        to cvmfs:cvmfs with mode 0700.
+      - No configuration shares the cache directory between multiple clients.
+
+    NON-COMPLIANT if:
+      - CVMFS_CACHE_BASE points to an NFS mount, a shared volume, or a
+        directory accessible to multiple user accounts.
+      - Cache directory permissions are broader than 0700.
+
+    NEEDS-HUMAN if:
+      - Cache directory ownership and mode must be verified on the live host:
+        stat /var/lib/cvmfs should show mode 0700, owner cvmfs.
+
+remediation:
+  summary: |
+    Set CVMFS_CACHE_BASE to a local directory, ensure it is owned by cvmfs:cvmfs
+    with mode 0700, and keep it off any shared or network-backed filesystem.
+  template: |
+    # /etc/cvmfs/default.local:
+    CVMFS_CACHE_BASE=/var/lib/cvmfs
+
+    # Set permissions (run once at provisioning):
+    mkdir -p /var/lib/cvmfs
+    chown cvmfs:cvmfs /var/lib/cvmfs
+    chmod 0700 /var/lib/cvmfs
+
+known_na_reasons: []

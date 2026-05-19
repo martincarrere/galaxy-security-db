@@ -1,0 +1,54 @@
+id: NGX-ISO-001
+component: nginx
+category: isolation
+title: "nginx worker processes must run as a dedicated unprivileged service user"
+description: |
+  Verifies that the nginx user directive is set to an unprivileged dedicated
+  service account and that worker processes run under that account. The master
+  process must be root to bind ports below 1024 and read TLS private keys, but
+  workers — which handle all network traffic and parse untrusted content — must
+  drop to a restricted user. Running workers as root would immediately yield
+  host-wide root access upon any nginx parser or module vulnerability.
+
+severity: high
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "Galaxy Project — nginx Configuration"
+    url: "https://docs.galaxyproject.org/en/master/admin/nginx.html"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "**/nginx.conf"
+  prompt: |
+    Inspect the nginx.conf user directive for the worker process identity.
+
+    COMPLIANT if:
+      - The user directive in nginx.conf is set to an unprivileged service user
+        (e.g., user www-data; on Debian/Ubuntu or user nginx; on RHEL-family).
+      - The configured user is not root.
+      - The user is a dedicated service account, not a general-purpose system user.
+
+    NON-COMPLIANT if:
+      - The user directive is absent (nginx defaults to nobody on some builds,
+        but the explicit directive must be confirmed).
+      - user root; is set.
+
+    NEEDS-HUMAN if:
+      - The runtime worker identity must be confirmed via ps on the live host:
+        ps -o user,cmd -C nginx should show master as root and workers as the
+        configured unprivileged user.
+
+remediation:
+  summary: |
+    Set user www-data; (Debian/Ubuntu) or user nginx; (RHEL-family) at the
+    top of nginx.conf and confirm worker processes run under that identity.
+  template: |
+    # /etc/nginx/nginx.conf:
+    user www-data;   # or: user nginx;
+    worker_processes auto;
+
+known_na_reasons: []

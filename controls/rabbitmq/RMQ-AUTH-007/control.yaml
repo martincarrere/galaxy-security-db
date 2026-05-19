@@ -1,0 +1,65 @@
+id: RMQ-AUTH-007
+component: rabbitmq
+category: auth
+title: "RabbitMQ multi-tenant clusters must use distinct virtual hosts per tenant"
+description: |
+  Verifies that when a cluster serves multiple tenants or environments, the
+  definitions file declares a dedicated virtual host for each rather than sharing
+  the default "/" vhost. RabbitMQ's authorization model is scoped per vhost; sharing
+  a single vhost removes the namespace boundary that prevents one tenant from
+  interfering with another's exchanges and queues through a permissions error.
+
+severity: medium
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "RabbitMQ Production Checklist — Virtual Hosts"
+    url: "https://www.rabbitmq.com/docs/production-checklist"
+    section: "#virtual-hosts"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "definitions.json"
+    - "**/definitions.json"
+    - "**/rabbitmq-definitions.json"
+  prompt: |
+    Inspect the vhosts array and the permissions array.
+
+    COMPLIANT if any of:
+      - Only "/" (or one named vhost) is present AND all users and permissions
+        point to the same vhost, indicating a single-tenant deployment.
+      - Multiple distinct vhosts are defined and different user accounts are
+        scoped to different vhosts.
+
+    NON-COMPLIANT if:
+      - Only "/" is defined AND users with clearly different application prefixes
+        (e.g., app1-*, app2-*) are all granted permissions on "/", suggesting
+        multiple tenants sharing the default vhost.
+
+    NEEDS-HUMAN if:
+      - definitions.json is absent.
+      - Tenancy model cannot be determined from user names or vhost structure alone.
+
+remediation:
+  summary: |
+    Create a dedicated virtual host for each tenant and for each environment
+    (development, staging, production) that shares the cluster. Scope each
+    application's user accounts and permissions to its own vhost.
+  template: |
+    # In definitions.json vhosts array:
+    {
+      "vhosts": [
+        { "name": "project1-prod" },
+        { "name": "project2-prod" }
+      ]
+    }
+
+known_na_reasons:
+  - id: NA-001
+    reason: |
+      Single-tenant deployment where the default vhost "/" is intentional.
+    requires_evidence: |
+      Architecture diagram confirming single-tenant use.

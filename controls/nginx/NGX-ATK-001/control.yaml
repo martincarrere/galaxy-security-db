@@ -1,0 +1,72 @@
+id: NGX-ATK-001
+component: nginx
+category: attack-surface
+title: "nginx must apply per-IP request-rate and connection limits to all public HTTP locations"
+description: |
+  Verifies that nginx defines shared-memory rate-limiting zones and applies
+  limit_req and limit_conn directives to public-facing HTTP locations. Without
+  per-client throttling, a single hostile or misbehaving client can exhaust
+  worker connection slots, queue depth, or upstream capacity for all users.
+  Rate limiting is a prerequisite for credential brute-force protection on
+  authentication endpoints.
+
+severity: medium
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "nginx Admin Guide — Controlling Access to Proxied HTTP"
+    url: "https://docs.nginx.com/nginx/admin-guide/security-controls/controlling-access-proxied-http/"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "**/nginx.conf"
+    - "**/nginx/*.conf"
+    - "**/sites-available/*.conf"
+    - "**/conf.d/*.conf"
+  prompt: |
+    Inspect nginx configuration for rate-limiting and connection-limit zones.
+
+    COMPLIANT if:
+      - At least one limit_req_zone is declared in the http {} block,
+        keyed on $binary_remote_addr.
+      - At least one limit_conn_zone is declared in the http {} block.
+      - limit_req and/or limit_conn are applied to public-facing location blocks.
+      - Authentication endpoints have a lower limit_req rate than general API paths.
+      - When limit key is based on a forwarded header, set_real_ip_from is
+        configured to trust only the upstream proxy CIDR.
+
+    NON-COMPLIANT if:
+      - No limit_req_zone or limit_conn_zone is defined.
+      - Zones are defined but limit_req / limit_conn directives are never applied
+        to any location block.
+
+    NEEDS-HUMAN if:
+      - Rate limiting is handled by an upstream load balancer, WAF, or CDN
+        rather than nginx — verify the effective rate policy at the edge.
+
+remediation:
+  summary: |
+    Define limit_req_zone and limit_conn_zone in the http {} block and apply
+    limit_req and limit_conn to each public location. Use stricter limits on
+    authentication and sensitive API endpoints.
+  template: |
+    http {
+        limit_req_zone $binary_remote_addr zone=general:10m rate=20r/s;
+        limit_req_zone $binary_remote_addr zone=auth:10m rate=5r/m;
+        limit_conn_zone $binary_remote_addr zone=perip:10m;
+
+        server {
+            location / {
+                limit_req zone=general burst=50 nodelay;
+                limit_conn perip 20;
+            }
+            location /login {
+                limit_req zone=auth burst=3 nodelay;
+            }
+        }
+    }
+
+known_na_reasons: []

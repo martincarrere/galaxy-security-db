@@ -1,0 +1,68 @@
+id: NGX-FS-001
+component: nginx
+category: filesystem
+title: "Galaxy code, config, and dataset paths must be outside all nginx root and alias directives"
+description: |
+  Verifies that Galaxy's source tree, configuration files, and dataset storage
+  (files_path) are located outside any directory referenced by an nginx root or
+  alias directive. Any path inside the nginx document root is potentially directly
+  servable to the web. A single misconfiguration — stray autoindex on, wildcard
+  try_files, or alias traversal — could expose Galaxy source code, database
+  credentials, or raw dataset bytes to unauthenticated clients.
+
+severity: high
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "Galaxy Project — nginx Configuration"
+    url: "https://docs.galaxyproject.org/en/master/admin/nginx.html"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "**/nginx.conf"
+    - "**/nginx/*.conf"
+    - "**/sites-available/*.conf"
+    - "**/conf.d/*.conf"
+  prompt: |
+    Extract all root and alias directive paths from nginx config and verify none
+    resolve into Galaxy's installation or data directories.
+
+    COMPLIANT if:
+      - No root or alias directive resolves to a path that is an ancestor of,
+        or the same as, Galaxy's installation directory (e.g., /srv/galaxy,
+        /opt/galaxy, /home/galaxy/server).
+      - No root or alias directive resolves to Galaxy's files_path or
+        any dataset storage directory.
+      - The only location reaching Galaxy's filesystem is an internal location
+        (marked internal;) used for X-Accel-Redirect — see NGX-TB-002.
+
+    NON-COMPLIANT if:
+      - A root or alias directive points inside Galaxy's installation path.
+      - A root or alias directive points to or inside Galaxy's files_path.
+      - autoindex on; is present under a root that could include Galaxy paths.
+
+    NEEDS-HUMAN if:
+      - Galaxy's actual installation and data paths must be obtained from
+        the running deployment to compare against nginx directives.
+
+remediation:
+  summary: |
+    Relocate Galaxy installation and data directories to paths outside any
+    nginx root or alias scope. Reach files only through the internal
+    X-Accel-Redirect location with the internal; directive.
+  template: |
+    # Correct: document root does not include Galaxy paths:
+    server {
+        root /var/www/html;   # static assets only, separate from Galaxy
+
+        # Galaxy data only via internal X-Accel path:
+        location /_x_accel_redirect/ {
+            internal;
+            alias /data/galaxy/files/;
+        }
+    }
+
+known_na_reasons: []

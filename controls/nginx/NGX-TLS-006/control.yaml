@@ -1,0 +1,67 @@
+id: NGX-TLS-006
+component: nginx
+category: crypto-transit
+title: "nginx must encrypt and verify the HTTP upstream hop with proxy_ssl_verify enabled"
+description: |
+  Verifies that nginx encrypts the connection to upstream application servers using
+  HTTPS and enables proxy_ssl_verify so the upstream certificate is authenticated
+  against a trusted CA bundle. Encryption without verification allows a
+  man-in-the-middle on the internal network to substitute a certificate from the
+  same CA or impersonate the upstream entirely; both threats exist in shared
+  infrastructure, container fabrics, and multi-tenant environments.
+
+severity: medium
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "nginx Admin Guide — Securing HTTP Traffic to Upstream"
+    url: "https://docs.nginx.com/nginx/admin-guide/security-controls/securing-http-traffic-upstream/"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "**/nginx.conf"
+    - "**/nginx/*.conf"
+    - "**/sites-available/*.conf"
+    - "**/conf.d/*.conf"
+  prompt: |
+    Inspect proxy_pass directives for HTTPS scheme and proxy_ssl_verify settings.
+
+    COMPLIANT if:
+      - proxy_pass uses an https:// upstream URL for sensitive backends.
+      - proxy_ssl_verify on; is set.
+      - proxy_ssl_trusted_certificate points to a valid CA bundle.
+      - proxy_ssl_protocols TLSv1.2 TLSv1.3; is set.
+      - proxy_ssl_server_name on; is set so SNI is sent correctly.
+
+    NON-COMPLIANT if:
+      - proxy_pass uses http:// for upstreams that support HTTPS.
+      - proxy_ssl_verify is explicitly set to off.
+      - proxy_ssl_trusted_certificate is absent when proxy_ssl_verify is on.
+
+    NEEDS-HUMAN if:
+      - The upstream uses a self-signed or internal CA certificate — verify
+        the trusted certificate bundle contains the correct CA.
+
+remediation:
+  summary: |
+    Change http:// upstream URLs to https:// and add proxy_ssl_verify on,
+    proxy_ssl_trusted_certificate, and proxy_ssl_protocols to the location block.
+  template: |
+    location /api/ {
+        proxy_pass https://upstream-service;
+        proxy_ssl_verify on;
+        proxy_ssl_trusted_certificate /etc/nginx/ca-bundle.crt;
+        proxy_ssl_protocols TLSv1.2 TLSv1.3;
+        proxy_ssl_server_name on;
+    }
+
+known_na_reasons:
+  - id: NA-001
+    reason: |
+      nginx and all upstreams communicate over a mutually authenticated
+      mTLS service mesh that provides equivalent guarantees.
+    requires_evidence: |
+      Document the service mesh mTLS configuration.

@@ -1,0 +1,54 @@
+id: RMQ-NET-001
+component: rabbitmq
+category: network
+title: "RabbitMQ EPMD and Erlang distribution must be bound to a local or cluster-internal interface"
+description: |
+  Verifies that ERL_EPMD_ADDRESS in rabbitmq-env.conf is set to a loopback or
+  private network interface rather than the default wildcard (0.0.0.0). Binding
+  EPMD and the distribution transport to all interfaces exposes the inter-node port
+  on any public interface present on the host, reducing the attack to obtaining the
+  Erlang cookie.
+
+severity: high
+
+sources:
+  - type: vendor_doc
+    authority: medium
+    title: "RabbitMQ Blog — EPMD Public Exposure"
+    url: "https://www.rabbitmq.com/blog/2024/12/18/epmd-public-exposure"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "rabbitmq-env.conf"
+    - "**/rabbitmq-env.conf"
+  prompt: |
+    Locate the ERL_EPMD_ADDRESS variable.
+
+    COMPLIANT if:
+      - ERL_EPMD_ADDRESS is set to 127.0.0.1 (single-node) or to a specific
+        private/RFC-1918 IP address (clustered deployment).
+
+    NON-COMPLIANT if:
+      - ERL_EPMD_ADDRESS is set to 0.0.0.0 (wildcard bind on all interfaces).
+
+    NEEDS-HUMAN if:
+      - rabbitmq-env.conf is absent — ERL_EPMD_ADDRESS may be set via OS
+        environment, or the default wildcard bind is in effect.
+      - ERL_EPMD_ADDRESS is absent from the file — same situation as absent file.
+
+remediation:
+  summary: |
+    Set ERL_EPMD_ADDRESS to 127.0.0.1 for single-node deployments or to the
+    cluster's private network interface IP for clustered setups. For clustered
+    nodes, also set inet_dist_use_interface to the same interface.
+  template: |
+    # In rabbitmq-env.conf — single node:
+    export ERL_EPMD_ADDRESS=127.0.0.1
+
+    # In rabbitmq-env.conf — clustered, binding to private NIC:
+    export ERL_EPMD_ADDRESS=10.0.1.5
+    SERVER_ADDITIONAL_ERL_ARGS="-kernel inet_dist_use_interface '{10,0,1,5}'"
+
+known_na_reasons: []

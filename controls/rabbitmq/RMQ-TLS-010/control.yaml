@@ -1,0 +1,57 @@
+id: RMQ-TLS-010
+component: rabbitmq
+category: crypto-transit
+title: "RabbitMQ CA bundle must be correctly assembled and verification depth must be set"
+description: |
+  Verifies that ssl_options.cacertfile is present and, when intermediate CAs are
+  in the chain, that ssl_options.depth is set to at least 2. Erlang's TLS stack
+  treats only the first certificate in the bundle as the trust anchor and requires
+  intermediate CAs to be explicitly included in chain order. Incorrect assembly
+  causes valid peer certificates to fail verification.
+
+severity: medium
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "RabbitMQ TLS Support — CA Bundles"
+    url: "https://www.rabbitmq.com/docs/ssl"
+    section: "#peer-verification-trusted-certificates"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "rabbitmq.conf"
+    - "**/rabbitmq.conf"
+    - "**/rabbitmq.conf.d/*.conf"
+  prompt: |
+    Locate ssl_options.cacertfile and ssl_options.depth.
+
+    COMPLIANT if:
+      - ssl_options.cacertfile is set to a non-empty path.
+      - ssl_options.depth is set to 2 or higher when a multi-level CA chain
+        is in use (indicated by depth > 1 or the presence of intermediate CA
+        references in the same config).
+
+    NON-COMPLIANT if:
+      - ssl_options.cacertfile is absent when ssl_listeners is configured.
+      - ssl_options.depth = 1 (or absent, defaulting to 1) when the config
+        includes references to intermediate CA files or multi-level cert paths.
+
+    NEEDS-HUMAN if:
+      - ssl_listeners is absent — TLS not configured, control not applicable.
+      - Cannot determine CA chain depth from file paths alone.
+
+remediation:
+  summary: |
+    Construct the CA bundle with the root CA first followed by intermediates in
+    chain order. Set ssl_options.depth = 2 for a single-intermediate CA chain,
+    higher for deeper chains. Verify with:
+    openssl verify -CAfile ca_bundle.pem -untrusted intermediate.pem server.pem
+  template: |
+    # In rabbitmq.conf:
+    ssl_options.cacertfile = /etc/rabbitmq/ca_bundle.pem
+    ssl_options.depth      = 2
+
+known_na_reasons: []

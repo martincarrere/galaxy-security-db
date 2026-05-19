@@ -1,0 +1,59 @@
+id: NGX-TLS-002
+component: nginx
+category: crypto-transit
+title: "HTTPS Galaxy vhost must emit a Strict-Transport-Security header with adequate max-age"
+description: |
+  Verifies that the nginx Galaxy HTTPS vhost emits a Strict-Transport-Security
+  header on all responses, with a max-age of at least 31536000 seconds (one year).
+  HSTS instructs compliant clients to refuse plaintext connections to the host for
+  the declared duration, neutralizing SSL-stripping attacks on subsequent visits
+  after the first HTTPS response has been observed.
+
+severity: medium
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "Galaxy Project — nginx Configuration"
+    url: "https://docs.galaxyproject.org/en/master/admin/nginx.html"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "**/nginx.conf"
+    - "**/nginx/*.conf"
+    - "**/sites-available/*.conf"
+    - "**/conf.d/*.conf"
+  prompt: |
+    Inspect HTTPS server blocks for Strict-Transport-Security header configuration.
+
+    COMPLIANT if:
+      - An add_header Strict-Transport-Security directive is present in the HTTPS
+        server block (listen 443 ssl) with max-age >= 31536000 (one year).
+      - The always keyword is included: add_header ... always; so the header
+        is emitted even on error responses.
+      - includeSubDomains is present if all subdomains of the hostname also
+        serve HTTPS exclusively.
+
+    NON-COMPLIANT if:
+      - No Strict-Transport-Security header is configured on the HTTPS server block.
+      - max-age is set below 31536000 seconds.
+      - The always keyword is absent (header not sent on 4xx/5xx responses).
+
+    NEEDS-HUMAN if:
+      - The HSTS header is injected by an upstream or load balancer rather
+        than nginx — verify the effective header value in a live response.
+
+remediation:
+  summary: |
+    Add Strict-Transport-Security with max-age=63072000 and always to the
+    HTTPS server block. Only add preload after confirming the policy is stable
+    and submitting to the HSTS preload list.
+  template: |
+    server {
+        listen 443 ssl;
+        add_header Strict-Transport-Security "max-age=63072000; includeSubDomains" always;
+    }
+
+known_na_reasons: []

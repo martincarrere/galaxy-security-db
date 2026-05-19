@@ -1,0 +1,71 @@
+id: NGX-AUTH-003
+component: nginx
+category: auth
+title: "Galaxy upload endpoint must proxy to tusd with pre-create hook wired to Galaxy auth"
+description: |
+  Verifies that the nginx upload proxy routes tus upload requests to a tusd
+  instance configured with a pre-create hook pointing at Galaxy's upload hook API.
+  The pre-create hook is what binds every upload to an authenticated Galaxy session
+  before any bytes are accepted. Without it, the upload endpoint accepts data from
+  unauthenticated clients or under unverified Galaxy sessions.
+
+severity: medium
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "Galaxy Project — nginx Configuration"
+    url: "https://docs.galaxyproject.org/en/master/admin/nginx.html"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "**/nginx.conf"
+    - "**/nginx/*.conf"
+    - "**/sites-available/*.conf"
+    - "**/conf.d/*.conf"
+  prompt: |
+    Inspect nginx configuration for the Galaxy tus/tusd upload proxy configuration.
+
+    COMPLIANT if:
+      - A location block (typically /api/upload/resumable_upload/ or similar)
+        proxies to the tusd upstream.
+      - The tusd service is configured with -hooks-http pointing at Galaxy's upload
+        hook API (e.g., https://galaxy/api/upload/hooks) — visible in service unit
+        or deployment config.
+      - The nginx proxy_pass target for uploads is tusd (not Galaxy directly).
+
+    NON-COMPLIANT if:
+      - The upload endpoint proxies directly to Galaxy workers without tusd.
+      - Tusd is in use but no pre-create hook configuration is present.
+
+    NEEDS-HUMAN if:
+      - Tusd configuration is managed outside nginx config files — requires
+        inspection of the tusd service unit and startup arguments.
+
+remediation:
+  summary: |
+    Proxy Galaxy upload paths through tusd and start tusd with the pre-create
+    hook pointed at Galaxy's upload hook API.
+  template: |
+    # nginx location for tus uploads:
+    location /api/upload/resumable_upload/ {
+        proxy_pass http://localhost:1080/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_request_buffering off;
+    }
+
+    # tusd service args (systemd ExecStart):
+    # tusd -hooks-http https://galaxy/api/upload/hooks \
+    #      -hooks-enabled-events pre-create \
+    #      -behind-proxy true \
+    #      -upload-dir /data/tus-uploads/
+
+known_na_reasons:
+  - id: NA-001
+    reason: |
+      Deployment does not use tusd for file uploads.
+    requires_evidence: |
+      Confirm the upload mechanism in use and document its authentication enforcement.

@@ -1,0 +1,57 @@
+id: RMQ-AUTH-003
+component: rabbitmq
+category: auth
+title: "RabbitMQ default 'guest' user must be deleted before production use"
+description: |
+  Verifies that the built-in guest account has been removed from the broker before
+  it is exposed to any non-loopback traffic. The guest/guest credential pair is
+  publicly documented; any attacker who reaches the AMQP port can authenticate
+  immediately and obtain full administrative control. Deleting the account is the
+  strongest remediation and removes the credential attack surface entirely.
+
+severity: high
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "RabbitMQ Production Checklist — Security"
+    url: "https://www.rabbitmq.com/docs/production-checklist"
+    section: "#security-users-and-permissions"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "definitions.json"
+    - "**/definitions.json"
+    - "**/rabbitmq-definitions.json"
+  prompt: |
+    Inspect the users array in the definitions file.
+
+    COMPLIANT if any of:
+      - No definitions.json is present and there is no indication the guest user
+        was explicitly re-enabled (absence means the operator manages users via CLI;
+        mark compliant only if combined with RMQ-AUTH-001 being COMPLIANT).
+      - definitions.json is present and the users array contains no entry with
+        name = "guest".
+
+    NON-COMPLIANT if:
+      - definitions.json is present and contains a user entry with name = "guest".
+
+    NEEDS-HUMAN if:
+      - definitions.json is absent and RMQ-AUTH-001 (guest loopback restriction)
+        result is unknown — cannot determine whether the guest account is present
+        in the internal database from files alone.
+
+remediation:
+  summary: |
+    Delete the default guest user before opening the broker to non-loopback traffic,
+    then provision a dedicated administrator account with a generated password.
+    If using definitions.json, remove the guest entry from the users array.
+  template: |
+    # Via CLI (preferred):
+    rabbitmqctl delete_user guest
+
+    # Or: ensure definitions.json users array omits the guest entry entirely.
+
+known_na_reasons: []

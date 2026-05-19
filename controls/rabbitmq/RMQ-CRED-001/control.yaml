@@ -1,0 +1,57 @@
+id: RMQ-CRED-001
+component: rabbitmq
+category: filesystem
+title: "Erlang cookie file must be readable only by the RabbitMQ service account"
+description: |
+  Verifies that the .erlang.cookie file exists with mode 0400 or 0600 and is
+  owned by the RabbitMQ service user. The cookie is the only authentication
+  credential protecting all inter-node Erlang distribution traffic and CLI access.
+  Any local OS user who reads the file can impersonate a cluster node, execute
+  privileged CLI commands, or join a rogue node without any broker-level
+  authentication challenge.
+
+severity: high
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "RabbitMQ Production Checklist — Erlang Cookie"
+    url: "https://www.rabbitmq.com/docs/production-checklist"
+    section: "#inter-node-authentication"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - ".erlang.cookie"
+    - "**/.erlang.cookie"
+    - "/var/lib/rabbitmq/.erlang.cookie"
+  prompt: |
+    Locate the .erlang.cookie file and inspect its filesystem metadata.
+
+    COMPLIANT if:
+      - File exists with mode 0400 or 0600 and owner is the rabbitmq service
+        account (typically "rabbitmq").
+
+    NON-COMPLIANT if:
+      - File has group read bits set (mode & 0040 != 0).
+      - File has world read bits set (mode & 0004 != 0).
+      - File is owned by root or another non-service account and readable
+        by group/world.
+
+    NEEDS-HUMAN if:
+      - File not found at expected paths — may be at a custom path set via
+        RABBITMQ_ERLANG_COOKIE environment variable.
+      - File permissions cannot be determined from content inspection alone
+        (requires stat metadata access).
+
+remediation:
+  summary: |
+    Set the cookie file permissions to 0400 owned by the rabbitmq service user.
+    Strip group and world read permissions. Verify on each cluster node.
+  template: |
+    # On each cluster node:
+    chown rabbitmq:rabbitmq /var/lib/rabbitmq/.erlang.cookie
+    chmod 0400 /var/lib/rabbitmq/.erlang.cookie
+
+known_na_reasons: []

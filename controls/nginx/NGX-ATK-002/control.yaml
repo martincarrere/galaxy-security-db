@@ -1,0 +1,65 @@
+id: NGX-ATK-002
+component: nginx
+category: attack-surface
+title: "nginx stream proxies must apply per-IP connection limits to all TCP listeners"
+description: |
+  Verifies that nginx stream module servers define and apply per-IP connection
+  limits via limit_conn_zone and limit_conn directives. Without connection limits,
+  a small number of attacker connections can monopolize the worker connection slots
+  for a TCP proxy listener, denying service to legitimate clients of the backend.
+
+severity: medium
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "nginx Admin Guide — Controlling Access to Proxied TCP"
+    url: "https://docs.nginx.com/nginx/admin-guide/security-controls/controlling-access-proxied-tcp/"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "**/nginx.conf"
+    - "**/nginx/*.conf"
+    - "**/stream.conf"
+    - "**/conf.d/*.conf"
+  prompt: |
+    Inspect stream {} blocks for connection-limit zone definitions and application.
+
+    COMPLIANT if:
+      - At least one limit_conn_zone is declared in the stream {} block,
+        keyed on $binary_remote_addr.
+      - limit_conn is applied to each stream server block.
+      - Per-connection bandwidth limits (proxy_upload_rate / proxy_download_rate)
+        are set where the proxied protocol allows it.
+
+    NON-COMPLIANT if:
+      - Stream server blocks have no limit_conn directive.
+      - No limit_conn_zone is defined within the stream {} context.
+
+    NEEDS-HUMAN if:
+      - No stream {} blocks are present — control is not applicable.
+      - Rate-limiting for TCP streams is handled by an upstream network device
+        or firewall — verify the effective policy.
+
+remediation:
+  summary: |
+    Define a limit_conn_zone in the stream context and apply limit_conn to
+    each server block.
+  template: |
+    stream {
+        limit_conn_zone $binary_remote_addr zone=tcpperip:10m;
+        server {
+            listen 5671 ssl;
+            limit_conn tcpperip 10;
+            proxy_pass rabbitmq-upstream:5671;
+        }
+    }
+
+known_na_reasons:
+  - id: NA-001
+    reason: |
+      No stream module listeners are in use in this deployment.
+    requires_evidence: |
+      Confirm no stream {} blocks are present in any nginx configuration.

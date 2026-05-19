@@ -1,0 +1,72 @@
+id: RMQ-RES-010
+component: rabbitmq
+category: resource-controls
+title: "RabbitMQ must define configurable resource limits at cluster, vhost, and user scope"
+description: |
+  Verifies that resource limits are configured at multiple scopes — cluster-wide
+  (rabbitmq.conf), per-vhost, and per-user — so that a single misbehaving or
+  malicious tenant cannot monopolize broker resources. The production checklist
+  treats these layered limits as baseline guards against availability degradation
+  in shared or multi-tenant clusters.
+
+severity: medium
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "RabbitMQ Production Checklist — Resource Limits"
+    url: "https://www.rabbitmq.com/docs/production-checklist"
+    section: "#limits"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "rabbitmq.conf"
+    - "**/rabbitmq.conf"
+    - "definitions.json"
+    - "**/definitions.json"
+  prompt: |
+    Check for limits at both the broker config and definitions scopes.
+
+    COMPLIANT if:
+      - rabbitmq.conf contains at least one global limit (max_connections,
+        channel_max, max_message_size).
+      - AND definitions.json contains at least one vhost_limits entry.
+
+    NON-COMPLIANT if:
+      - No limits are configured at any scope.
+
+    NEEDS-HUMAN if:
+      - Limits are partially configured (some scopes covered but not all) —
+        assess whether the deployment is single-tenant (fewer scopes needed)
+        or multi-tenant (all scopes required).
+
+remediation:
+  summary: |
+    Configure at minimum: global limits (channel_max, max_connections) in
+    rabbitmq.conf; per-vhost limits (max-connections, max-queues) in
+    definitions.json; and per-user limits for any account with potentially
+    unbounded behavior.
+  template: |
+    # In rabbitmq.conf — cluster-wide ceiling:
+    max_connections = 50000
+    channel_max     = 256
+
+    # In definitions.json — per-vhost and per-user:
+    {
+      "vhost_limits": [
+        { "vhost": "app-vhost", "value": { "max-connections": 500, "max-queues": 100 } }
+      ],
+      "user_limits": [
+        { "user": "app-service", "value": { "max-connections": 50, "max-channels": 32 } }
+      ]
+    }
+
+known_na_reasons:
+  - id: NA-001
+    reason: |
+      Single-tenant single-application cluster where a single identity drives
+      all traffic; per-identity limits provide no additional protection.
+    requires_evidence: |
+      Architecture confirmation that the cluster is dedicated to one application.

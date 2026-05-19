@@ -1,0 +1,62 @@
+id: RMQ-TLS-004
+component: rabbitmq
+category: crypto-transit
+title: "RabbitMQ Erlang PEM cache must be cleared after certificate rotation"
+description: |
+  Verifies that the operational procedure for certificate rotation includes
+  explicitly clearing the Erlang TLS PEM cache after replacing certificate files
+  on disk. The Erlang/OTP TLS stack caches PEM data in memory; without a cache
+  clear, the broker continues presenting the old certificate to new connections
+  even after the replacement file is on disk, extending the validity window of a
+  revoked or expired certificate.
+
+severity: medium
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "RabbitMQ TLS Support — Certificate Rotation"
+    url: "https://www.rabbitmq.com/docs/ssl"
+    section: "#certificate-rotation"
+    accessed_at: "2026-05-17"
+
+check:
+  type: human_review
+  globs:
+    - "**/rabbitmq.conf"
+    - "**/*.pem"
+    - "**/*.crt"
+  prompt: |
+    Verify that the certificate rotation runbook or operational procedure
+    includes a step to clear the Erlang PEM cache after replacing certificate files.
+
+    COMPLIANT if:
+      - A documented runbook or automation script for certificate rotation includes
+        a step that calls ssl:clear_pem_cache() via the RabbitMQ Erlang console
+        or equivalent (e.g., rabbitmqctl eval 'ssl:clear_pem_cache().').
+      - After a recent certificate rotation, the broker was restarted (restart also
+        clears the cache).
+
+    NON-COMPLIANT if:
+      - Certificate rotation procedure exists but does not include a cache-clear step.
+      - Certificate files were recently rotated but no cache-clear or restart
+        is documented as having occurred.
+
+    NEEDS-HUMAN if:
+      - No runbook or rotation procedure is available for review — requires
+        interviewing the operator or reviewing deployment automation.
+
+remediation:
+  summary: |
+    Add ssl:clear_pem_cache() to the certificate rotation runbook immediately
+    after replacing the certificate and key files on disk. Verify by connecting
+    a client that inspects the presented certificate and confirming the new
+    certificate is served without waiting for cache TTL expiry.
+  template: |
+    # After rotating cert files, clear the in-memory PEM cache:
+    rabbitmqctl eval 'ssl:clear_pem_cache().'
+
+    # Then verify new cert is served:
+    openssl s_client -connect rabbitmq-host:5671 </dev/null | openssl x509 -noout -dates
+
+known_na_reasons: []

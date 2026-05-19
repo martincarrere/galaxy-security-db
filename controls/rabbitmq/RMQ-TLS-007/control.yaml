@@ -1,0 +1,78 @@
+id: RMQ-TLS-007
+component: rabbitmq
+category: crypto-transit
+title: "RabbitMQ inter-node Erlang distribution traffic must use TLS"
+description: |
+  Verifies that the Erlang distribution channel used for inter-node replication
+  and cluster management is configured to use TLS. Without TLS, all cluster
+  replication traffic crosses the network in cleartext, exposing message payloads,
+  cluster state, and authentication frames to any observer on the inter-node
+  network segment.
+
+severity: high
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "RabbitMQ Production Checklist — Inter-node TLS"
+    url: "https://www.rabbitmq.com/docs/production-checklist"
+    section: "#inter-node-authentication"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "rabbitmq-env.conf"
+    - "**/rabbitmq-env.conf"
+    - "advanced.config"
+    - "**/advanced.config"
+    - "inter_node_tls.config"
+    - "**/inter_node_tls.config"
+  prompt: |
+    Check for inter-node TLS distribution configuration. Look for:
+    - SERVER_ADDITIONAL_ERL_ARGS or CONFIG_FILE references to proto_dist = inet_tls
+    - advanced.config entries for inet_tls distribution
+    - A dedicated inter-node TLS config file
+
+    COMPLIANT if:
+      - rabbitmq-env.conf contains SERVER_ADDITIONAL_ERL_ARGS with
+        "-proto_dist inet_tls" or equivalent inet_tls_dist configuration.
+      - advanced.config contains kernel inet_dist or ssl dist_opt entries.
+
+    NON-COMPLIANT if:
+      - rabbitmq-env.conf is present and lacks any proto_dist = inet_tls entry.
+      - advanced.config is present and shows no inter-node TLS distribution config.
+
+    NEEDS-HUMAN if:
+      - Neither rabbitmq-env.conf nor advanced.config is present — TLS distribution
+        may be configured via OS environment variables outside these files.
+      - Single-node deployment where inter-node TLS is not applicable.
+
+remediation:
+  summary: |
+    Configure Erlang distribution to use inet_tls by adding the appropriate
+    SERVER_ADDITIONAL_ERL_ARGS to rabbitmq-env.conf and providing TLS certificates
+    for inter-node communication. Apply the same peer verification practices used
+    for client-facing TLS.
+  template: |
+    # In rabbitmq-env.conf:
+    SERVER_ADDITIONAL_ERL_ARGS="-pa /path/to/cert/dir -proto_dist inet_tls \
+      -ssl_dist_optfile /etc/rabbitmq/inter_node_tls.config"
+
+    # In /etc/rabbitmq/inter_node_tls.config:
+    [{server, [{cacertfile, "/etc/rabbitmq/ca.pem"},
+               {certfile,   "/etc/rabbitmq/server.pem"},
+               {keyfile,    "/etc/rabbitmq/server.key"},
+               {verify,     verify_peer},
+               {fail_if_no_peer_cert, true}]},
+     {client, [{cacertfile, "/etc/rabbitmq/ca.pem"},
+               {certfile,   "/etc/rabbitmq/client.pem"},
+               {keyfile,    "/etc/rabbitmq/client.key"},
+               {verify,     verify_peer}]}].
+
+known_na_reasons:
+  - id: NA-001
+    reason: |
+      Single-node deployment — no inter-node Erlang distribution traffic exists.
+    requires_evidence: |
+      Confirm cluster_nodes configuration shows only one node.

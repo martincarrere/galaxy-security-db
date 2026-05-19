@@ -1,0 +1,71 @@
+id: RMQ-NET-005
+component: rabbitmq
+category: network
+title: "Inter-node cluster communication ports must be restricted to cluster member nodes"
+description: |
+  Verifies that firewall rules permit the inter-node cluster communication port
+  range (default 25672, or the configured inet_dist_listen range) only from
+  the IP addresses of cluster member nodes. Unlike EPMD (port 4369), which acts
+  as a name lookup service, the distribution port carries full Erlang node
+  traffic. Any host that can reach the distribution port and knows or brute-forces
+  the Erlang cookie gains full node-level control equivalent to a local shell.
+
+severity: high
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "RabbitMQ Clustering Guide — Firewall and Port Access"
+    url: "https://www.rabbitmq.com/docs/clustering"
+    section: "#firewall"
+    accessed_at: "2026-05-17"
+
+check:
+  type: human_review
+  globs:
+    - "**/iptables*"
+    - "**/nftables*"
+    - "**/ufw*"
+    - "**/*.tf"
+    - "**/security-groups*"
+    - "**/rabbitmq.conf"
+    - "**/advanced.config"
+  prompt: |
+    Determine the configured inet_dist_listen port range (default: 25672) and
+    verify that firewall rules permit it only from cluster member node IPs.
+
+    COMPLIANT if:
+      - The inet_dist_listen_min / inet_dist_listen_max range (or default 25672)
+        is restricted to the IP addresses of all cluster member nodes in
+        firewall rules or cloud security groups.
+      - Terraform or IaC shows security group ingress for the distribution
+        port range scoped only to cluster member CIDRs.
+      - A single-node deployment has no ingress rules for this port range,
+        effectively blocking all external access.
+
+    NON-COMPLIANT if:
+      - Any rule allows 0.0.0.0/0 ingress to the distribution port range.
+      - No firewall rules exist for the distribution port range.
+
+    NEEDS-HUMAN if:
+      - Firewall policy is managed outside available files (cloud console,
+        network appliance) — requires live rule inspection.
+      - The actual inet_dist_listen range must be read from the running node
+        via rabbitmqctl status.
+
+remediation:
+  summary: |
+    Restrict the Erlang distribution port range to cluster member IPs at both
+    host firewall and cloud security group layers. If the range is not pinned,
+    configure inet_dist_listen_min and inet_dist_listen_max in rabbitmq.conf or
+    advanced.config to a known fixed range before writing firewall rules.
+  template: |
+    # Pin the distribution port range in advanced.config:
+    # [{kernel, [{inet_dist_listen_min, 25672}, {inet_dist_listen_max, 25672}]}].
+
+    # iptables — allow distribution port only from cluster peers:
+    iptables -A INPUT -p tcp --dport 25672 -s 10.0.1.11 -j ACCEPT
+    iptables -A INPUT -p tcp --dport 25672 -s 10.0.1.12 -j ACCEPT
+    iptables -A INPUT -p tcp --dport 25672 -j DROP
+
+known_na_reasons: []

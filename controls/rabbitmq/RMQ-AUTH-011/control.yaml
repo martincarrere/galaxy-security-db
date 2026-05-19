@@ -1,0 +1,75 @@
+id: RMQ-AUTH-011
+component: rabbitmq
+category: auth
+title: "RabbitMQ MQTT and STOMP deployments must define topic-level authorization rules"
+description: |
+  Verifies that when MQTT or STOMP exchanges are declared in the definitions file,
+  topic_permissions entries are present to restrict which topic patterns each user
+  may publish to or subscribe from. Without topic authorization, any user with write
+  permission to an exchange can publish to any topic, enabling cross-application
+  interference in IoT or multi-application deployments.
+
+severity: medium
+
+applicable_when:
+  deployment_modes: ["mqtt", "stomp"]
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "RabbitMQ Access Control — Topic Authorization"
+    url: "https://www.rabbitmq.com/docs/access-control"
+    section: "#topic-authorisation"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "definitions.json"
+    - "**/definitions.json"
+    - "**/rabbitmq-definitions.json"
+  prompt: |
+    Inspect the exchanges array for MQTT or STOMP exchanges (type amq.topic or
+    names beginning with amq.topic, mqtt.*). If present, inspect the
+    topic_permissions array.
+
+    COMPLIANT if:
+      - No MQTT or STOMP exchanges are present (control not applicable).
+      - MQTT or STOMP exchanges are present AND topic_permissions is non-empty
+        with entries scoped per user and exchange.
+
+    NON-COMPLIANT if:
+      - MQTT or STOMP exchanges are present AND topic_permissions is absent
+        or empty — all topics on those exchanges are implicitly permitted.
+
+    NEEDS-HUMAN if:
+      - definitions.json is absent.
+      - Exchange types are ambiguous or topic routing is configured outside
+        the definitions file.
+
+remediation:
+  summary: |
+    Define topic_permissions for each user that accesses MQTT or STOMP exchanges.
+    Grant only the topic prefixes each user legitimately publishes to or subscribes
+    from. Absence of topic permissions implicitly allows all topics.
+  template: |
+    # In definitions.json topic_permissions array:
+    {
+      "topic_permissions": [
+        {
+          "user": "device-sensor-01",
+          "vhost": "iot",
+          "exchange": "amq.topic",
+          "write": "^sensors\\.device01\\..*",
+          "read": "^commands\\.device01\\..*"
+        }
+      ]
+    }
+
+known_na_reasons:
+  - id: NA-001
+    reason: |
+      Deployment does not use MQTT or STOMP protocols; topic authorization
+      is not applicable.
+    requires_evidence: |
+      Confirm enabled_plugins does not include rabbitmq_mqtt or rabbitmq_stomp.

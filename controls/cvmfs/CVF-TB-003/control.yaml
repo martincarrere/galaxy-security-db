@@ -1,0 +1,62 @@
+id: CVF-TB-003
+component: cvmfs
+category: trust-boundary
+title: "CVMFS signing certificates must be constrained via a master-key-signed whitelist"
+description: |
+  Verifies that the .cvmfswhitelist file lists the fingerprints of all authorized
+  signing certificates, is signed by the repository master key, and that clients
+  are configured to verify both the whitelist signature and the certificate
+  fingerprint before accepting any manifest signature. Without an enforced
+  whitelist, any valid certificate issued by the same CA — or a leaked per-repository
+  signing key — could be used to sign forged manifests.
+
+severity: high
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "CernVM-FS — Security Deep Dive"
+    url: "https://cvmfs.readthedocs.io/en/stable/apx-security.html"
+    accessed_at: "2026-05-17"
+
+check:
+  type: human_review
+  globs:
+    - "**/.cvmfswhitelist"
+    - "**/etc/cvmfs/keys/*.pub"
+  prompt: |
+    Verify that .cvmfswhitelist is present, current, and verifies against
+    the master public key.
+
+    COMPLIANT if:
+      - .cvmfswhitelist is present in the repository and contains SHA-1 (or
+        current algorithm) fingerprint(s) of authorized signing certificates.
+      - The whitelist signature verifies against the master public key
+        shipped in the cvmfs-config package.
+      - The whitelist expiry timestamp (E= field) is in the future.
+      - A scheduled re-signing job keeps the whitelist current (see CVF-CRED-002).
+
+    NON-COMPLIANT if:
+      - .cvmfswhitelist is absent from the repository.
+      - The whitelist expiry is in the past.
+      - The whitelist signature does not verify against the master public key.
+
+    NEEDS-HUMAN if:
+      - Whitelist inspection requires accessing the Stratum 0 repository
+        or downloading from the live server — cannot be determined from
+        config files alone.
+
+remediation:
+  summary: |
+    Generate a whitelist listing each authorized signing certificate fingerprint.
+    Sign it with the master key (via HSM/smart card if possible). Ensure clients
+    have the master public key installed via cvmfs-config packages.
+  template: |
+    # Inspect the whitelist:
+    cat /srv/cvmfs/<repo>/.cvmfswhitelist
+    # Must include: E= (expiry), N= (repo name), fingerprint line(s), signature
+
+    # Re-sign if near expiry:
+    cvmfs_server resign <repo.example.org>
+
+known_na_reasons: []

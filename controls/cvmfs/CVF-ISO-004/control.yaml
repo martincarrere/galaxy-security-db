@@ -1,0 +1,72 @@
+id: CVF-ISO-004
+component: cvmfs
+category: isolation
+title: "CVMFS Stratum 0 publishing must run as an unprivileged repository owner, not root"
+description: |
+  Verifies that routine CVMFS repository publishing operations (transactions,
+  snapshots) are performed under a dedicated unprivileged repository owner account,
+  and that root access is reserved for rare administrative operations (creating or
+  deleting repositories). The setuid remount helper supplied with CVMFS provides
+  a narrowly scoped privilege path for the remount step without requiring general
+  root access. Running routine publishes as root expands the blast radius of a
+  Stratum 0 intrusion to full host compromise.
+
+severity: high
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "CernVM-FS — Security Deep Dive"
+    url: "https://cvmfs.readthedocs.io/en/stable/apx-security.html"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "**/server.conf"
+    - "**/repositories.d/**/server.conf"
+    - "**/ansible/**"
+    - "**/cvmfs_repositories.yml"
+    - "**/group_vars/**"
+    - "**/host_vars/**"
+  prompt: |
+    Inspect repository server.conf and Ansible role variables for the repository
+    owner configuration.
+
+    COMPLIANT if:
+      - CVMFS_REPOSITORY_OWNER in server.conf is set to a non-root user name.
+      - Ansible role variable cvmfs_repositories[].owner is set to a non-root
+        user for each production repository.
+      - No publishing workflow documentation or script uses sudo -u root for
+        routine cvmfs_server transaction / publish / snapshot operations.
+
+    NON-COMPLIANT if:
+      - CVMFS_REPOSITORY_OWNER is set to root.
+      - Ansible cvmfs_repositories[].owner is root or absent (defaulting to root).
+      - Publishing scripts invoke cvmfs_server commands as root rather than
+        as the dedicated owner.
+
+    NEEDS-HUMAN if:
+      - The effective repository owner must be confirmed on the Stratum 0 host:
+        stat /srv/cvmfs/<repo> should show the owner as a non-root account.
+
+remediation:
+  summary: |
+    Set CVMFS_REPOSITORY_OWNER (and Ansible owner variable) to a dedicated
+    non-root system user. Ensure publishing automation authenticates as that
+    user. Use only the supplied setuid helper for the remount step.
+  template: |
+    # server.conf:
+    CVMFS_REPOSITORY_OWNER=cvmfsadm
+
+    # Ansible role variable:
+    cvmfs_repositories:
+      - repository: repo.example.org
+        owner: cvmfsadm
+
+known_na_reasons:
+  - id: NA-001
+    reason: |
+      This host is a client-only CVMFS node; no Stratum 0 publishing is performed.
+    requires_evidence: |
+      Confirm no cvmfs_server commands are run on this host.

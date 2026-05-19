@@ -1,0 +1,68 @@
+id: RMQ-CRED-002
+component: rabbitmq
+category: secrets
+title: "Erlang cookie must be generated with a cryptographically secure random source"
+description: |
+  Verifies that the Erlang inter-node cookie was generated using a
+  cryptographically secure random number generator and meets minimum entropy
+  requirements (at least 20 characters from a large character space). The cookie
+  is the sole shared secret protecting Erlang cluster membership; a weak or
+  predictable cookie allows any network-reachable host to join the cluster or
+  issue arbitrary Erlang RPC calls once it can reach the distribution port.
+  Default cookies set by package installers are widely known and must be replaced.
+
+severity: high
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "RabbitMQ Clustering Guide — Erlang Cookie"
+    url: "https://www.rabbitmq.com/docs/clustering"
+    section: "#erlang-cookie"
+    accessed_at: "2026-05-17"
+
+check:
+  type: human_review
+  globs:
+    - "**/.erlang.cookie"
+    - "**/erlang.cookie"
+  prompt: |
+    Review the Erlang cookie generation procedure and, if the cookie file is
+    accessible, assess its entropy.
+
+    COMPLIANT if:
+      - The cookie was generated using a CSPRNG command such as
+        openssl rand -base64 or /dev/urandom with at least 20 characters.
+      - Generation is automated by deployment tooling (Ansible, Terraform, Vault)
+        and uses a CSPRNG-backed secret store.
+      - The cookie value (if readable) is at least 20 characters, contains mixed
+        case, digits, or symbols, and is not a known default value
+        (e.g., "ERLANG_COOKIE", "rabbit", hostname-based strings).
+
+    NON-COMPLIANT if:
+      - The cookie file contains a known default or installer-generated value.
+      - The cookie is shorter than 20 characters.
+      - Generation procedure uses a non-random source (hostname, date, UUID v1).
+      - The cookie is the same across all environments (dev, staging, prod).
+
+    NEEDS-HUMAN if:
+      - The cookie file is not available for review (correct ownership 400
+        root permissions) — requires operator confirmation of generation method.
+      - Generation procedure is undocumented and must be retrieved from
+        the deployment engineer.
+
+remediation:
+  summary: |
+    Generate a new Erlang cookie using a CSPRNG, distribute it to all cluster
+    nodes before starting the broker, and ensure the file has mode 400 owned
+    by the rabbitmq user. Rotate the cookie by stopping all nodes, replacing the
+    file on each, and restarting in order.
+  template: |
+    # Generate a strong cookie:
+    openssl rand -base64 32 | tr -d '\n' > /var/lib/rabbitmq/.erlang.cookie
+    chmod 400 /var/lib/rabbitmq/.erlang.cookie
+    chown rabbitmq:rabbitmq /var/lib/rabbitmq/.erlang.cookie
+
+    # Distribute the same value to all cluster nodes before first start.
+
+known_na_reasons: []

@@ -1,0 +1,55 @@
+id: RMQ-AUTH-004
+component: rabbitmq
+category: auth
+title: "RabbitMQ must not allow anonymous SASL logins in production"
+description: |
+  Verifies that the ANONYMOUS SASL mechanism is not included in the broker's
+  enabled mechanism list. Anonymous logins allow any client that can reach a
+  broker port to open a session with no identity verification, bypassing all
+  credential-based access controls. Combined with permissive vhost defaults,
+  this enables unauthorized message publication or consumption with no
+  attribution.
+
+severity: high
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "RabbitMQ Production Checklist — Security"
+    url: "https://www.rabbitmq.com/docs/production-checklist"
+    section: "#security-users-and-permissions"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "rabbitmq.conf"
+    - "**/rabbitmq.conf"
+    - "**/rabbitmq.conf.d/*.conf"
+  prompt: |
+    Locate the auth_mechanisms directive.
+
+    COMPLIANT if any of:
+      - auth_mechanisms is explicitly set and does not contain ANONYMOUS
+        (e.g., auth_mechanisms.1 = PLAIN or auth_mechanisms.1 = AMQPLAIN only).
+
+    NON-COMPLIANT if:
+      - Any auth_mechanisms.N = ANONYMOUS line is present.
+
+    NEEDS-HUMAN if:
+      - auth_mechanisms is not set anywhere in the file — the effective default
+        depends on the RabbitMQ version and cannot be determined from the
+        config file alone.
+
+remediation:
+  summary: |
+    Explicitly enumerate only the authentication mechanisms required for your
+    clients (PLAIN and AMQPLAIN are standard). Do not include ANONYMOUS.
+    Replace any legitimate anonymous use cases with a dedicated named account
+    before applying the change.
+  template: |
+    # In rabbitmq.conf — allow only PLAIN and AMQPLAIN:
+    auth_mechanisms.1 = PLAIN
+    auth_mechanisms.2 = AMQPLAIN
+
+known_na_reasons: []

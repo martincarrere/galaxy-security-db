@@ -1,0 +1,61 @@
+id: CVF-ISO-002
+component: cvmfs
+category: isolation
+title: "CVMFS repositories must be mounted with nosuid; cvmfs_suid must not be enabled"
+description: |
+  Verifies that CVMFS mounts preserve the default nosuid mount option, meaning
+  setuid bits and Linux capabilities on files inside repositories are not honored
+  by the kernel when those files are executed. Enabling cvmfs_suid turns any
+  publisher with write access into a local privilege-escalation vector on every
+  client mounting that repository: a setuid binary published to the repository
+  would execute as root on all clients.
+
+severity: high
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "CernVM-FS — Security Deep Dive"
+    url: "https://cvmfs.readthedocs.io/en/stable/apx-security.html"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "**/etc/cvmfs/default.local"
+    - "**/etc/cvmfs/config.d/*.conf"
+    - "**/etc/cvmfs/repositories.d/**/*.conf"
+    - "**/cvmfs/*.conf"
+    - "**/ansible/**"
+  prompt: |
+    Inspect all CVMFS configuration files for CVMFS_SUID=yes.
+
+    COMPLIANT if:
+      - No CVMFS_SUID=yes appears in any CVMFS configuration file
+        (default.local, config.d/*.conf, repositories.d/**).
+      - Ansible role variables or equivalent provisioning config do not set
+        cvmfs_suid=true or equivalent for any repository.
+
+    NON-COMPLIANT if:
+      - CVMFS_SUID=yes appears in any CVMFS configuration file or
+        provisioning template.
+      - An Ansible role variable enables cvmfs_suid for any repository
+        without documented justification.
+
+    NEEDS-HUMAN if:
+      - Mount options must be verified on the live host:
+        mount | grep cvmfs — each mount must show nosuid.
+
+remediation:
+  summary: |
+    Remove CVMFS_SUID=yes from all CVMFS configuration files. If a specific
+    repository requires SUID (exceptional case), scope it to that repository
+    only with documented justification.
+  template: |
+    # Verify no suid in configs:
+    grep -r CVMFS_SUID /etc/cvmfs/
+
+    # Verify live mounts:
+    mount | grep cvmfs | grep nosuid
+
+known_na_reasons: []

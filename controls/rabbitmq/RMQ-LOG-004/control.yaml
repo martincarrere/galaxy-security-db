@@ -1,0 +1,64 @@
+id: RMQ-LOG-004
+component: rabbitmq
+category: logging
+title: "CloudAMQP metrics and log export must be configured for all production instances"
+description: |
+  Verifies that CloudAMQP's built-in metrics export and log forwarding are
+  enabled for all production instances. CloudAMQP provides integration with
+  external observability platforms (Datadog, New Relic, Loggly, Papertrail,
+  CloudWatch, etc.); without enabling these integrations, broker metrics and
+  logs exist only within the CloudAMQP console with limited retention and no
+  correlation with application-side telemetry. This control is specific to
+  deployments using the CloudAMQP managed service.
+
+severity: medium
+
+applicable_when:
+  deployment_modes: ["cloudamqp"]
+
+sources:
+  - type: vendor_doc
+    authority: medium
+    title: "CloudAMQP Documentation — Metrics and Log Integration"
+    url: "https://www.cloudamqp.com/docs/faq.html"
+    accessed_at: "2026-05-17"
+
+check:
+  type: human_review
+  prompt: |
+    Review CloudAMQP integration settings for metrics and log export on each
+    production instance.
+
+    COMPLIANT if:
+      - A metrics integration (Datadog, New Relic, CloudWatch, or equivalent)
+        is active and receiving data from the instance.
+      - A log integration (Papertrail, Loggly, Splunk, or equivalent) is
+        configured to forward broker logs off the CloudAMQP platform.
+      - Exported metrics retention covers at least 15 days.
+
+    NON-COMPLIANT if:
+      - No metrics or log integrations are configured on the production instance.
+      - Metrics are only visible within the CloudAMQP console.
+
+    NEEDS-HUMAN if:
+      - CloudAMQP console access is required to verify integration status —
+        cannot be determined from infrastructure files alone.
+
+remediation:
+  summary: |
+    In the CloudAMQP console, navigate to the instance's integrations panel
+    and configure at least one metrics destination and one log destination.
+    Verify that data is flowing within 10 minutes of enabling the integration.
+  template: |
+    # CloudAMQP API — enable Datadog metrics integration:
+    curl -u <TOKEN>: \
+      -X POST https://api.cloudamqp.com/api/instances/<INSTANCE_ID>/integrations \
+      -H "Content-Type: application/json" \
+      -d '{"name":"datadog","apiKey":"<DD_API_KEY>","tags":["env:prod"]}'
+
+known_na_reasons:
+  - id: NA-001
+    reason: |
+      Deployment does not use CloudAMQP managed service.
+    requires_evidence: |
+      Confirm self-hosted or alternative managed broker deployment.

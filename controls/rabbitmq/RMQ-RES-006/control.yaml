@@ -1,0 +1,73 @@
+id: RMQ-RES-006
+component: rabbitmq
+category: resource-controls
+title: "Connection churn must be monitored and application reconnection patterns must be bounded"
+description: |
+  Verifies that application connection patterns do not produce excessive churn
+  (rapid open/close cycling) that exhausts broker file descriptor and memory
+  resources. RabbitMQ holds state for every connection through its full TCP
+  teardown lifecycle; even connections closed by the client consume file
+  descriptors and memory for a period. High churn rates can overwhelm the broker
+  even when the instantaneous connection count is within limits. This control
+  requires evidence that churn is monitored and that applications use long-lived
+  connections with exponential back-off reconnection.
+
+severity: medium
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "RabbitMQ Connections — Connection Lifecycle and Churn"
+    url: "https://www.rabbitmq.com/docs/connections"
+    section: "#monitoring"
+    accessed_at: "2026-05-17"
+
+check:
+  type: human_review
+  globs:
+    - "**/monitoring*"
+    - "**/prometheus*"
+    - "**/grafana*"
+    - "**/*.yml"
+    - "**/*.yaml"
+  prompt: |
+    Review application connection management patterns and monitoring coverage
+    for connection churn.
+
+    COMPLIANT if:
+      - Monitoring dashboards (Prometheus, Grafana, CloudAMQP metrics) track
+        the rate of new connections per second and alert on spikes.
+      - Application code uses long-lived connections with channel multiplexing
+        rather than a connection per message or per request.
+      - Client reconnection logic implements exponential back-off with jitter
+        to prevent thundering-herd reconnection after broker restarts.
+      - The broker's connection_created rate metric is below a documented
+        acceptable threshold in steady state.
+
+    NON-COMPLIANT if:
+      - No monitoring of connection creation rate exists.
+      - Applications are known to create a new connection per message or
+        per short-lived operation.
+      - Reconnection logic uses fixed short intervals without back-off.
+
+    NEEDS-HUMAN if:
+      - Connection patterns require live broker metric inspection via the
+        management API or Prometheus scrape — cannot be determined from
+        config files alone.
+      - Application source code review is required to assess reconnection logic.
+
+remediation:
+  summary: |
+    Implement connection pooling or long-lived connections in all applications.
+    Add monitoring on the rabbitmq_connections_opened_total metric and alert
+    when the per-minute rate exceeds baseline. Add exponential back-off with
+    jitter to all reconnection logic.
+  template: |
+    # Prometheus alert — connection churn:
+    - alert: RabbitMQHighConnectionChurn
+      expr: rate(rabbitmq_connections_opened_total[5m]) > 10
+      for: 5m
+      annotations:
+        summary: "High RabbitMQ connection churn rate"
+
+known_na_reasons: []

@@ -1,0 +1,75 @@
+id: RMQ-TLS-008
+component: rabbitmq
+category: crypto-transit
+title: "Java RabbitMQ client must enable hostname verification on TLS connections"
+description: |
+  Verifies that Java applications connecting to RabbitMQ call
+  ConnectionFactory#enableHostnameVerification() before establishing production
+  connections. The Java client does not enable hostname verification by default;
+  without it, a valid certificate issued for a different server by the same CA
+  can be used to impersonate the broker, enabling a man-in-the-middle attack
+  despite TLS being nominally in use.
+
+severity: high
+
+applicable_when:
+  deployment_modes: ["java-client"]
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "RabbitMQ TLS Support — Java Client Hostname Verification"
+    url: "https://www.rabbitmq.com/docs/ssl"
+    section: "#java-client"
+    accessed_at: "2026-05-17"
+
+check:
+  type: human_review
+  globs:
+    - "**/*.java"
+    - "**/application.properties"
+    - "**/application.yml"
+    - "**/application.yaml"
+  prompt: |
+    Inspect Java source files and Spring/framework configuration for
+    RabbitMQ connection factory setup.
+
+    COMPLIANT if:
+      - Java source contains a call to connectionFactory.enableHostnameVerification()
+        on any ConnectionFactory instance used for production connections.
+      - Spring Boot configuration sets spring.rabbitmq.ssl.verify-hostname=true
+        (or equivalent framework property).
+
+    NON-COMPLIANT if:
+      - ConnectionFactory is configured with TLS (SSLContext present) but
+        enableHostnameVerification() is not called.
+      - Spring Boot config explicitly sets verify-hostname=false.
+
+    NEEDS-HUMAN if:
+      - No Java source files found or connection factory configuration is in
+        compiled artifacts not available for inspection.
+      - Framework abstracts connection factory creation and the underlying
+        setting cannot be determined from config files.
+
+remediation:
+  summary: |
+    Call enableHostnameVerification() on every ConnectionFactory instance
+    used for production connections. Also ensure the broker certificate
+    includes a Subject Alternative Name (SAN) matching the hostname used
+    by clients.
+  template: |
+    // Java client:
+    ConnectionFactory factory = new ConnectionFactory();
+    factory.useSslProtocol();
+    factory.enableHostnameVerification();
+
+    // Spring Boot application.properties:
+    spring.rabbitmq.ssl.enabled=true
+    spring.rabbitmq.ssl.verify-hostname=true
+
+known_na_reasons:
+  - id: NA-001
+    reason: |
+      Deployment does not use the Java RabbitMQ client library.
+    requires_evidence: |
+      Confirm client technology stack uses a different language/library.

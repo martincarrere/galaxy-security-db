@@ -1,0 +1,68 @@
+id: RMQ-LOG-001
+component: rabbitmq
+category: logging
+title: "Broker host clocks must be synchronized via NTP to ensure log timestamp integrity"
+description: |
+  Verifies that all hosts running RabbitMQ broker nodes have NTP or a compatible
+  time synchronization service (chrony, systemd-timesyncd) enabled and
+  synchronized. RabbitMQ log entries, Erlang crash dumps, and management API
+  event timestamps reflect the host system clock. Unsynchronized clocks make
+  cross-node log correlation unreliable, can cause misleading event ordering in
+  incident investigations, and may invalidate TLS certificate validity checks
+  performed by the Erlang runtime.
+
+severity: medium
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "RabbitMQ Production Checklist — System Configuration"
+    url: "https://www.rabbitmq.com/docs/production-checklist"
+    section: "#system-clocks"
+    accessed_at: "2026-05-17"
+
+check:
+  type: human_review
+  globs:
+    - "**/chrony.conf"
+    - "**/ntp.conf"
+    - "**/timesyncd.conf"
+    - "**/Dockerfile"
+    - "**/*.tf"
+  prompt: |
+    Verify that NTP or an equivalent time synchronization service is active and
+    synchronized on all hosts running RabbitMQ broker nodes.
+
+    COMPLIANT if:
+      - The host runs chrony, ntpd, or systemd-timesyncd and is synchronized
+        to an NTP server (timedatectl show or chronyc tracking confirm sync).
+      - Container deployments synchronize via the host kernel (NTP managed
+        at the hypervisor or container host level), and this is verified.
+      - Cloud VM instances use the cloud provider's NTP service
+        (169.254.169.123 for AWS, metadata.google.internal for GCP, etc.)
+        and synchronization is confirmed.
+
+    NON-COMPLIANT if:
+      - timedatectl or equivalent shows NTPSynchronized=no.
+      - No NTP service is installed or enabled on the broker host.
+      - Clock drift exceeds 1 second relative to reference.
+
+    NEEDS-HUMAN if:
+      - Clock synchronization status requires running timedatectl, chronyc, or
+        ntpq on the live host — cannot be determined from config files alone.
+
+remediation:
+  summary: |
+    Install and enable chrony or systemd-timesyncd on all broker hosts.
+    Configure time sources appropriate for the hosting environment and verify
+    synchronization status before and after broker deployment.
+  template: |
+    # Install and enable chrony:
+    apt-get install -y chrony
+    systemctl enable --now chrony
+
+    # Verify synchronization:
+    chronyc tracking | grep "System time"
+    timedatectl show | grep NTPSynchronized
+
+known_na_reasons: []

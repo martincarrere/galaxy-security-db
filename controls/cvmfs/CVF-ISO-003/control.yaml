@@ -1,0 +1,70 @@
+id: CVF-ISO-003
+component: cvmfs
+category: isolation
+title: "SELinux must be in enforcing mode with the CVMFS policy module active on RHEL-family hosts"
+description: |
+  Verifies that SELinux is in enforcing mode and that the CVMFS RPM-provided
+  SELinux policy module is installed on RHEL-family hosts. The CVMFS RPM ships
+  SELinux policy modules that label the cache directory as cvmfs_cache_t and
+  restrict which process domains may access it. Disabling SELinux or removing
+  the CVMFS policy module reduces cache protection to standard UNIX permissions
+  only, removing the mandatory access-control layer.
+
+severity: medium
+
+applicable_when:
+  os_family: ["rhel", "centos", "rocky", "almalinux"]
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "CernVM-FS — Security Deep Dive"
+    url: "https://cvmfs.readthedocs.io/en/stable/apx-security.html"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "**/etc/selinux/config"
+    - "**/selinux/config"
+    - "**/ansible/**"
+  prompt: |
+    Inspect SELinux configuration and CVMFS SELinux policy module presence.
+
+    COMPLIANT if:
+      - /etc/selinux/config contains SELINUX=enforcing.
+      - No Ansible task or operational script calls setenforce 0 persistently.
+      - The CVMFS SELinux policy module is installed (visible via semodule -l
+        as the cvmfs module) — confirming the cvmfs RPM's post-install scripts ran.
+
+    NON-COMPLIANT if:
+      - SELINUX=permissive or SELINUX=disabled in /etc/selinux/config.
+      - An Ansible task sets selinux state=disabled or permissive.
+      - The cvmfs SELinux module has been removed (semodule -r cvmfs).
+
+    NEEDS-HUMAN if:
+      - The runtime SELinux state requires checking on the live host:
+        getenforce should return Enforcing.
+      - This control applies only to RHEL-family systems; Debian/Ubuntu
+        deployments use AppArmor or no mandatory access control — mark as N/A.
+
+remediation:
+  summary: |
+    Set SELINUX=enforcing in /etc/selinux/config and reboot, or run setenforce 1
+    for the current session. Ensure the cvmfs RPM was installed with its
+    SELinux policy module and has not been removed.
+  template: |
+    # Set enforcing mode:
+    sed -i 's/^SELINUX=.*/SELINUX=enforcing/' /etc/selinux/config
+    setenforce 1
+
+    # Verify CVMFS SELinux module:
+    semodule -l | grep cvmfs
+
+known_na_reasons:
+  - id: NA-001
+    reason: |
+      Deployment runs on Debian/Ubuntu where the CVMFS RPM SELinux policy
+      module does not apply.
+    requires_evidence: |
+      Confirm the host OS is Debian-family.

@@ -1,0 +1,64 @@
+id: NGX-TLS-004
+component: nginx
+category: crypto-transit
+title: "nginx must terminate HTTPS with valid certificates and restricted key file permissions"
+description: |
+  Verifies that nginx is configured as the HTTPS termination point with a valid
+  server certificate, properly scoped TLS listener, and private key file permissions
+  that prevent unauthorized access. Centralizing TLS termination at nginx lets the
+  proxy manage certificate lifecycle for all upstream services and ensures a single,
+  consistently configured cryptographic boundary for all inbound client traffic.
+
+severity: high
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "nginx Admin Guide — Terminating SSL/HTTPS"
+    url: "https://docs.nginx.com/nginx/admin-guide/security-controls/terminating-ssl-http/"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "**/nginx.conf"
+    - "**/nginx/*.conf"
+    - "**/sites-available/*.conf"
+    - "**/conf.d/*.conf"
+    - "**/*.crt"
+    - "**/*.pem"
+    - "**/*.key"
+  prompt: |
+    Verify HTTPS termination configuration and private key file permissions.
+
+    COMPLIANT if:
+      - At least one server block has listen 443 ssl; or listen 443 ssl http2;.
+      - ssl_certificate and ssl_certificate_key both point to existing files.
+      - The private key file (ssl_certificate_key) has mode 0600 or 0640 owned
+        by root or the nginx user — not world-readable.
+      - ssl_protocols and ssl_ciphers are set (see NGX-TLS-003 for details).
+
+    NON-COMPLIANT if:
+      - No HTTPS listener is configured.
+      - ssl_certificate_key points to a world-readable file (mode 0644 or broader).
+      - ssl_certificate and ssl_certificate_key reference missing or empty files.
+
+    NEEDS-HUMAN if:
+      - Certificates are managed by an external system (cert-manager, ACME) and
+        file paths resolve at runtime rather than being visible in static config.
+
+remediation:
+  summary: |
+    Provision the certificate and key, set key file mode to 0600, and configure
+    the HTTPS listener with ssl_certificate and ssl_certificate_key pointing
+    to the correct paths.
+  template: |
+    server {
+        listen 443 ssl;
+        ssl_certificate /etc/nginx/ssl/server.crt;
+        ssl_certificate_key /etc/nginx/ssl/server.key;
+        # Key file permissions:
+        # chmod 0600 /etc/nginx/ssl/server.key && chown root:root /etc/nginx/ssl/server.key
+    }
+
+known_na_reasons: []

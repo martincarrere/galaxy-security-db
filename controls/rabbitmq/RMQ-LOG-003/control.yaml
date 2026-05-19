@@ -1,0 +1,69 @@
+id: RMQ-LOG-003
+component: rabbitmq
+category: logging
+title: "RabbitMQ broker resource metrics must be collected and monitored continuously"
+description: |
+  Verifies that broker resource metrics — memory use, disk free space, file
+  descriptors, connection and channel counts, queue depths, and message rates —
+  are scraped and stored in a time-series system. RabbitMQ exposes a Prometheus
+  endpoint (/metrics) and a management HTTP API; without continuous collection,
+  resource exhaustion events are only discoverable after the broker has entered
+  a flow-control or blocked state. Post-incident analysis of resource exhaustion
+  is impossible without historical metric data.
+
+severity: medium
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "RabbitMQ Monitoring"
+    url: "https://www.rabbitmq.com/docs/monitoring"
+    accessed_at: "2026-05-17"
+
+check:
+  type: human_review
+  globs:
+    - "**/prometheus*"
+    - "**/grafana*"
+    - "**/monitoring*"
+    - "**/rabbitmq.conf"
+    - "**/enabled_plugins"
+    - "**/*.tf"
+  prompt: |
+    Verify that broker resource metrics are collected and dashboarded.
+
+    COMPLIANT if:
+      - The rabbitmq_prometheus plugin is enabled and a Prometheus scrape job
+        targets the broker's /metrics endpoint.
+      - A Grafana dashboard (or equivalent) shows at minimum: memory use,
+        disk free, file descriptors, connection count, queue depths,
+        and message publish/deliver rates.
+      - Metric retention covers at least 15 days for trend analysis.
+
+    NON-COMPLIANT if:
+      - No Prometheus scrape configuration targets the broker.
+      - The rabbitmq_prometheus plugin is not enabled.
+      - Only the management UI is used for monitoring with no metrics stored
+        outside the broker.
+
+    NEEDS-HUMAN if:
+      - Monitoring infrastructure is managed by a platform team and not visible
+        in repository files — requires verification against the live monitoring
+        stack.
+
+remediation:
+  summary: |
+    Enable the rabbitmq_prometheus plugin, add a Prometheus scrape job for
+    the broker, and import the official RabbitMQ Grafana dashboard
+    (ID 10991 or equivalent). Configure alert rules for memory and disk
+    thresholds before enabling production traffic.
+  template: |
+    # Enable the Prometheus metrics plugin:
+    rabbitmq-plugins enable rabbitmq_prometheus
+
+    # Prometheus scrape config (prometheus.yml):
+    - job_name: rabbitmq
+      static_configs:
+        - targets: ['rabbitmq-host:15692']
+
+known_na_reasons: []

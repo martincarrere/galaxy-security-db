@@ -1,0 +1,55 @@
+id: CVF-SCHN-002
+component: cvmfs
+category: supply-chain
+title: "CVMFS manifest must include repository name and timestamp to prevent replay attacks"
+description: |
+  Verifies that every published .cvmfspublished manifest contains the required
+  context-binding fields: root catalog hash (C), signing certificate reference (X),
+  fully qualified repository name (N), and publication timestamp (T), all covered
+  by the signature. Without these fields, a manifest signed for one repository
+  could be replayed as the current state of another, or an old manifest could be
+  served as current, reintroducing vulnerabilities that were previously removed.
+
+severity: medium
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "CernVM-FS — Security Deep Dive"
+    url: "https://cvmfs.readthedocs.io/en/stable/apx-security.html"
+    accessed_at: "2026-05-17"
+
+check:
+  type: human_review
+  globs:
+    - "**/.cvmfspublished"
+  prompt: |
+    Inspect a freshly published .cvmfspublished manifest for required context fields.
+
+    COMPLIANT if:
+      - A current .cvmfspublished manifest contains all of: N (repository name),
+        T (timestamp), C (root catalog hash), X (signing certificate reference),
+        and S (signature) fields.
+      - The N field contains the fully qualified repository name.
+      - The T field reflects a recent publication time.
+      - The standard cvmfs_server publish toolchain is used without modification.
+
+    NON-COMPLIANT if:
+      - Any of the N, T, C, X, or S fields is absent from the manifest.
+      - A custom publishing script was used that omits required fields.
+
+    NEEDS-HUMAN if:
+      - Access to the Stratum 0 host is required to download and inspect
+        the live .cvmfspublished file.
+
+remediation:
+  summary: |
+    Use the standard cvmfs_server publish workflow without modification.
+    Do not implement custom publishing tooling that omits context fields.
+    Verify manifest completeness after each publish.
+  template: |
+    # Inspect the manifest on Stratum 0:
+    cat /srv/cvmfs/<repo>/.cvmfspublished
+    # Must contain lines starting with N=, T=, C=, X=, S=
+
+known_na_reasons: []

@@ -1,0 +1,60 @@
+id: RMQ-AUTH-009
+component: rabbitmq
+category: auth
+title: "RabbitMQ authentication backend chain must be explicitly ordered by security policy"
+description: |
+  Verifies that when multiple authentication backends are configured, the chain
+  order in auth_backends is explicit and reflects a documented security policy.
+  The first backend to return a positive result is authoritative; an incorrectly
+  ordered chain can allow users to bypass a stricter primary backend by falling
+  through to a more permissive secondary one.
+
+severity: medium
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "RabbitMQ Access Control — Authentication Backends"
+    url: "https://www.rabbitmq.com/docs/access-control"
+    section: "#backends"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "rabbitmq.conf"
+    - "**/rabbitmq.conf"
+    - "**/advanced.config"
+    - "**/rabbitmq.conf.d/*.conf"
+  prompt: |
+    Locate the auth_backends directive (new-style config) or the
+    rabbit.auth_backends setting (advanced.config).
+
+    COMPLIANT if any of:
+      - Only one backend is configured (no ordering risk).
+      - Multiple backends are configured AND the primary backend is the more
+        restrictive one (e.g., LDAP or external auth listed before
+        rabbit_auth_backend_internal).
+
+    NON-COMPLIANT if:
+      - rabbit_auth_backend_internal (internal database) is listed before
+        rabbit_auth_backend_ldap or another external backend, allowing users
+        to authenticate against the internal DB even when LDAP is the intended
+        primary.
+
+    NEEDS-HUMAN if:
+      - auth_backends is not configured — single default backend, control not
+        applicable.
+      - Configuration uses advanced.config format that cannot be fully parsed.
+
+remediation:
+  summary: |
+    Place the most restrictive or authoritative backend first in the chain.
+    If LDAP is the primary identity store, list it before the internal database.
+    Ensure the fallback to the internal database is intentional and documented.
+  template: |
+    # In rabbitmq.conf — LDAP first, internal DB as fallback:
+    auth_backends.1 = rabbit_auth_backend_ldap
+    auth_backends.2 = rabbit_auth_backend_internal
+
+known_na_reasons: []

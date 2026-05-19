@@ -1,0 +1,65 @@
+id: RMQ-AUTH-005
+component: rabbitmq
+category: auth
+title: "RabbitMQ management plugin user tags must follow least-privilege assignment"
+description: |
+  Verifies that users in the definitions file are not assigned the administrator
+  management tag unnecessarily. The tag-based system in the management plugin
+  grants progressively broader capabilities: administrator grants full cluster
+  management including adding users and changing permissions. Application service
+  accounts must not carry management tags; the administrator tag must be reserved
+  for human operator accounts.
+
+severity: medium
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "RabbitMQ Access Control — User Tags"
+    url: "https://www.rabbitmq.com/docs/access-control"
+    section: "#permissions"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "definitions.json"
+    - "**/definitions.json"
+    - "**/rabbitmq-definitions.json"
+  prompt: |
+    For each user entry in the users array, inspect the tags field.
+
+    COMPLIANT if:
+      - All users with names matching service/application naming patterns
+        (e.g., prefixes like app-, svc-, service-, bot-, worker-, job-) carry
+        no management tags (tags = "" or tags absent).
+      - No more than a small number of accounts (ideally 1-2) carry the
+        administrator tag.
+
+    NON-COMPLIANT if:
+      - Any user whose name pattern suggests an application service account
+        carries the administrator tag.
+      - More than half of all users have the administrator tag.
+
+    NEEDS-HUMAN if:
+      - definitions.json is absent — tag assignment cannot be determined
+        from files alone.
+      - User naming does not follow a pattern that distinguishes operator
+        accounts from service accounts.
+
+remediation:
+  summary: |
+    Review all user accounts and demote service accounts to no management tag.
+    Assign monitoring tag for read-only dashboard access, policymaker for
+    policy configuration, and administrator only for accounts used by human
+    operators who require full cluster management.
+  template: |
+    # In definitions.json — service account with no management tags:
+    {
+      "users": [
+        { "name": "app-producer", "password_hash": "...", "tags": "" },
+        { "name": "ops-admin",    "password_hash": "...", "tags": "administrator" }
+      ]
+    }
+
+known_na_reasons: []

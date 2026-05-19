@@ -1,0 +1,70 @@
+id: RMQ-CRED-003
+component: rabbitmq
+category: secrets
+title: "RabbitMQ user credentials must have a documented and tested rotation procedure"
+description: |
+  Verifies that a documented, tested procedure exists for rotating RabbitMQ user
+  passwords, including application credentials and the management administrator
+  account. Without a rotation procedure, compromised credentials have an indefinite
+  validity window. The procedure must cover all credential types: broker user
+  passwords, Erlang cookie, and any TLS private keys used for mutual authentication.
+
+severity: medium
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "RabbitMQ Access Control — User Management"
+    url: "https://www.rabbitmq.com/docs/access-control"
+    section: "#user-management"
+    accessed_at: "2026-05-17"
+
+check:
+  type: human_review
+  globs:
+    - "**/runbook*"
+    - "**/playbook*"
+    - "**/*.md"
+    - "**/rotate*"
+    - "**/vault*"
+  prompt: |
+    Verify that a credential rotation procedure exists and has been executed
+    within the required rotation interval.
+
+    COMPLIANT if:
+      - A documented runbook or automation (Ansible, Vault, CI pipeline) exists
+        for rotating all RabbitMQ user passwords.
+      - The procedure covers all credential types: broker user passwords,
+        the Erlang cookie, and any TLS client certificates used for authentication.
+      - Credentials were last rotated within the defined rotation interval
+        (at most 90 days for privileged/admin accounts, 1 year for application
+        service accounts).
+      - Rotation automation updates the application configuration or secret store
+        without requiring manual credential injection into application configs.
+
+    NON-COMPLIANT if:
+      - No rotation procedure or runbook exists.
+      - Credentials have not been rotated since initial setup.
+      - Rotation procedure exists but has never been tested or executed.
+      - Passwords are hard-coded in application configs with no rotation path.
+
+    NEEDS-HUMAN if:
+      - Rotation history requires querying the secret store or change management
+        system not available for static review.
+      - The rotation procedure must be reviewed with the operations team.
+
+remediation:
+  summary: |
+    Document and test a credential rotation runbook covering all RabbitMQ
+    credential types. Automate rotation via a secret manager (Vault, AWS Secrets
+    Manager) that pushes updated credentials to application environments without
+    downtime. Schedule rotation on a defined cadence and record each rotation
+    event in the change log.
+  template: |
+    # Manual rotation via rabbitmqctl:
+    rabbitmqctl change_password <username> <new_password>
+
+    # Verify updated credentials work before revoking old ones:
+    rabbitmqctl authenticate_user <username> <new_password>
+
+known_na_reasons: []

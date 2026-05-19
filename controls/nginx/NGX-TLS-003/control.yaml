@@ -1,0 +1,70 @@
+id: NGX-TLS-003
+component: nginx
+category: crypto-transit
+title: "All Galaxy traffic must be served over HTTPS with modern TLS protocols and ciphers"
+description: |
+  Verifies that the nginx instance fronting Galaxy serves all traffic over HTTPS
+  using TLS 1.2 and 1.3 only, with a Mozilla-recommended modern cipher suite,
+  and that the HTTP listener performs a strict 301 redirect to HTTPS without
+  serving any Galaxy content over cleartext. Galaxy carries scientific datasets,
+  API keys, and user credentials; plaintext transport exposes all of these to
+  passive network observers.
+
+severity: high
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "Galaxy Project — nginx Configuration"
+    url: "https://docs.galaxyproject.org/en/master/admin/nginx.html"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "**/nginx.conf"
+    - "**/nginx/*.conf"
+    - "**/sites-available/*.conf"
+    - "**/conf.d/*.conf"
+  prompt: |
+    Inspect the nginx configuration for TLS protocol, cipher, and redirect settings.
+
+    COMPLIANT if:
+      - An HTTPS server block exists with ssl_protocols containing only TLSv1.2
+        and TLSv1.3 (no SSLv3, TLSv1.0, TLSv1.1).
+      - ssl_ciphers is set to a Mozilla modern or intermediate profile
+        (excludes RC4, DES, 3DES, export, null, anonymous ciphers).
+      - ssl_prefer_server_ciphers off; is set (correct for TLS 1.3 cipher
+        negotiation) or on; with a strong cipher list.
+      - Any HTTP server block (listen 80) returns a 301 redirect to https://
+        and does not serve Galaxy content directly.
+
+    NON-COMPLIANT if:
+      - ssl_protocols includes SSLv3, TLSv1.0, or TLSv1.1.
+      - ssl_ciphers includes weak ciphers (RC4, DES, NULL, EXPORT, aNULL, eNULL).
+      - A listen 80 server block serves Galaxy content without redirecting.
+
+    NEEDS-HUMAN if:
+      - External TLS scanner validation is required to confirm the effective
+        cipher and protocol negotiation against live broker endpoints.
+
+remediation:
+  summary: |
+    Set ssl_protocols TLSv1.2 TLSv1.3, apply a Mozilla modern cipher list,
+    and ensure the HTTP server block issues a 301 redirect only. Validate
+    with testssl.sh or Mozilla Observatory after changes.
+  template: |
+    # HTTPS server block:
+    server {
+        listen 443 ssl;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
+        ssl_prefer_server_ciphers off;
+    }
+    # HTTP redirect only:
+    server {
+        listen 80;
+        return 301 https://$host$request_uri;
+    }
+
+known_na_reasons: []

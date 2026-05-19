@@ -1,0 +1,64 @@
+id: CVF-SCHN-007
+component: cvmfs
+category: supply-chain
+title: "CVMFS client must have signed Merkle tree verification active with trusted public keys configured"
+description: |
+  Verifies that every CVMFS client is configured with the trusted repository
+  public key(s) and that no debug or relaxed-validation flag bypasses signature
+  verification. The signed Merkle tree is CVMFS's sole integrity and authenticity
+  mechanism; CVMFS transports content over plain HTTP by design, relying entirely
+  on cryptographic verification rather than transport security to prevent tampering.
+  Disabling verification exposes every client to arbitrary content injection by
+  any network-adjacent attacker.
+
+severity: critical
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "CernVM-FS — Security Deep Dive"
+    url: "https://cvmfs.readthedocs.io/en/stable/apx-security.html"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "**/etc/cvmfs/default.local"
+    - "**/etc/cvmfs/config.d/*.conf"
+    - "**/repositories.d/*.conf"
+    - "**/cvmfs/*.conf"
+  prompt: |
+    Verify that CVMFS_PUBLIC_KEY or CVMFS_KEYS_DIR is configured and that no
+    flag disables signature verification.
+
+    COMPLIANT if:
+      - CVMFS_PUBLIC_KEY is set in default.local or per-repository config,
+        pointing to an existing .pub key file.
+      - Alternatively, CVMFS_KEYS_DIR points to a directory containing .pub files.
+      - No configuration option or environment variable disables signature
+        validation (no CVMFS_IGNORE_SIGNATURE, no -ignore-signature flag in
+        any mounting script).
+
+    NON-COMPLIANT if:
+      - CVMFS_PUBLIC_KEY and CVMFS_KEYS_DIR are both absent.
+      - CVMFS_IGNORE_SIGNATURE=yes is set in any configuration file.
+      - A cvmfs2 mount script includes options that disable signature checking.
+
+    NEEDS-HUMAN if:
+      - The effective configuration is assembled from multiple config layers
+        (default, domain, repository) and requires cvmfs_config showconfig
+        on the live host to determine the effective CVMFS_PUBLIC_KEY.
+
+remediation:
+  summary: |
+    Set CVMFS_PUBLIC_KEY to the path of the repository's trusted .pub file
+    in default.local or per-repository config. Audit all config files for
+    any flags that suppress signature verification.
+  template: |
+    # /etc/cvmfs/config.d/repo.example.org.conf:
+    CVMFS_PUBLIC_KEY=/etc/cvmfs/keys/repo.example.org.pub
+
+    # Verify no signature bypass:
+    grep -r IGNORE_SIGNATURE /etc/cvmfs/
+
+known_na_reasons: []

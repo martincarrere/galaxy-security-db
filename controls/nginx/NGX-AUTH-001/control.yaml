@@ -1,0 +1,78 @@
+id: NGX-AUTH-001
+component: nginx
+category: auth
+title: "nginx must delegate authentication decisions to an external service via auth_request"
+description: |
+  Verifies that nginx uses the auth_request directive to validate requests against
+  an external authentication service before proxying to protected upstreams. The
+  auth service answers 2xx to allow or 4xx to deny. This pattern centralizes
+  authentication enforcement at the proxy layer, decoupling it from individual
+  backend services and enabling consistent session and token validation across
+  multiple upstream applications.
+
+severity: medium
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "nginx Admin Guide — Configuring Subrequest Authentication"
+    url: "https://docs.nginx.com/nginx/admin-guide/security-controls/configuring-subrequest-authentication/"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "**/nginx.conf"
+    - "**/nginx/*.conf"
+    - "**/sites-available/*.conf"
+    - "**/conf.d/*.conf"
+  prompt: |
+    Search nginx configuration for auth_request directives protecting upstream locations.
+
+    COMPLIANT if:
+      - At least one protected location block contains an auth_request directive
+        pointing to an internal authentication location (e.g., auth_request /auth;).
+      - An internal location (marked with internal;) proxies to the authentication
+        backend.
+      - auth_request_set directives forward identity headers from the auth response
+        to the upstream (e.g., $auth_resp_x_forwarded_user).
+
+    NON-COMPLIANT if:
+      - Locations requiring authentication have no auth_request directive.
+      - The auth_request location is not marked internal; and is therefore
+        directly reachable from clients.
+
+    NEEDS-HUMAN if:
+      - The authentication mechanism is implemented via a module or Lua script
+        rather than auth_request and cannot be verified from config files alone.
+
+remediation:
+  summary: |
+    Add an internal location that proxies to the authentication backend and
+    add auth_request /auth; to each protected location. Propagate identity
+    headers from the auth response using auth_request_set.
+  template: |
+    # Internal auth location:
+    location = /auth {
+        internal;
+        proxy_pass http://auth-service/validate;
+        proxy_pass_request_body off;
+        proxy_set_header Content-Length "";
+        proxy_set_header X-Original-URI $request_uri;
+    }
+
+    # Protected upstream location:
+    location /api/ {
+        auth_request /auth;
+        auth_request_set $auth_user $upstream_http_x_user;
+        proxy_set_header X-User $auth_user;
+        proxy_pass http://upstream;
+    }
+
+known_na_reasons:
+  - id: NA-001
+    reason: |
+      All upstreams implement authentication internally and no centralized
+      auth_request proxy layer is required for this deployment.
+    requires_evidence: |
+      Document the authentication mechanism used by each upstream.

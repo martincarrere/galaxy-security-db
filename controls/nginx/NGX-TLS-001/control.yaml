@@ -1,0 +1,71 @@
+id: NGX-TLS-001
+component: nginx
+category: crypto-transit
+title: "gzip compression must not be enabled for responses that mix secrets with attacker-controlled input"
+description: |
+  Verifies that nginx gzip compression is configured to avoid BREACH-style oracle
+  attacks on responses that combine secret tokens (CSRF tokens, API keys) with
+  attacker-reflected input. Compressing such mixed responses alongside an oracle
+  (chosen-plaintext boundary) leaks secret bytes through response size differences.
+  Compression of purely static content (CSS, JavaScript, images) is safe and
+  recommended; compression of sensitive dynamic API responses requires careful scoping.
+
+severity: medium
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "Galaxy Project — nginx Configuration"
+    url: "https://docs.galaxyproject.org/en/master/admin/nginx.html"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "**/nginx.conf"
+    - "**/nginx/*.conf"
+    - "**/sites-available/*.conf"
+    - "**/conf.d/*.conf"
+  prompt: |
+    Inspect nginx gzip configuration for potential BREACH exposure.
+
+    COMPLIANT if:
+      - gzip_types is explicitly declared and limited to static content types
+        (e.g., text/css, application/javascript, image/svg+xml).
+      - Dynamic API endpoints that may include secret tokens in responses
+        (CSRF tokens, session tokens in JSON) have gzip off; in their location block.
+      - gzip is enabled globally but gzip_vary on; is set to allow intermediate
+        caches to distinguish compressed and uncompressed responses.
+
+    NON-COMPLIANT if:
+      - gzip on; is set globally with no gzip_types restriction, enabling
+        compression of all text/* including potentially secret-bearing responses.
+      - No per-location gzip off; override exists for API endpoints that return
+        secret tokens alongside user-reflected content.
+
+    NEEDS-HUMAN if:
+      - Determining which API responses include secret tokens alongside
+        attacker-influenced content requires application-level review.
+
+remediation:
+  summary: |
+    Declare explicit gzip_types covering only static asset content types.
+    Set gzip off; in location blocks for API endpoints that return secret tokens
+    alongside user-controlled input.
+  template: |
+    gzip on;
+    gzip_vary on;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+
+    # Opt out specific sensitive endpoint:
+    location /api/ {
+        gzip off;
+        proxy_pass http://galaxy-upstream;
+    }
+
+known_na_reasons:
+  - id: NA-001
+    reason: |
+      gzip compression is disabled globally in this deployment.
+    requires_evidence: |
+      Confirm gzip off; in the http {} block.

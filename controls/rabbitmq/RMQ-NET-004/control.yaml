@@ -1,0 +1,65 @@
+id: RMQ-NET-004
+component: rabbitmq
+category: network
+title: "CloudAMQP instance firewall must whitelist only authorized client IP ranges"
+description: |
+  Verifies that the CloudAMQP instance-level firewall is configured to restrict
+  broker access to explicitly whitelisted IP ranges. CloudAMQP exposes broker
+  endpoints on the public internet by default; without firewall whitelisting,
+  any host on the internet can attempt AMQP connections and probe the management
+  API. This control is specific to deployments using the CloudAMQP managed service.
+
+severity: high
+
+applicable_when:
+  deployment_modes: ["cloudamqp"]
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "CloudAMQP Documentation — Firewall Configuration"
+    url: "https://www.cloudamqp.com/docs/faq.html"
+    accessed_at: "2026-05-17"
+
+check:
+  type: human_review
+  prompt: |
+    Review the CloudAMQP instance firewall settings in the CloudAMQP control panel
+    or via the CloudAMQP API for each production instance.
+
+    COMPLIANT if:
+      - The CloudAMQP firewall whitelist contains only the specific IP addresses
+        or CIDR ranges of authorized application servers and operations hosts.
+      - No wildcard (0.0.0.0/0 or ::/0) entries are present in the whitelist.
+      - The whitelist has been reviewed within the last 90 days and stale
+        entries removed.
+
+    NON-COMPLIANT if:
+      - The firewall whitelist is empty (all sources allowed) or contains
+        a 0.0.0.0/0 wildcard entry.
+      - The whitelist contains IP ranges broader than necessary
+        (e.g., entire office /16 instead of specific server IPs).
+
+    NEEDS-HUMAN if:
+      - Access to the CloudAMQP console or API is required to inspect the
+        current whitelist — cannot be determined from infrastructure files alone.
+
+remediation:
+  summary: |
+    In the CloudAMQP console, navigate to the instance's firewall settings
+    and add entries for each authorized application server and ops host.
+    Remove any wildcard entries. Automate whitelist maintenance via the
+    CloudAMQP API when IP ranges change.
+  template: |
+    # CloudAMQP API — set firewall rules (replace INSTANCE_ID and TOKEN):
+    curl -u <TOKEN>: \
+      -X POST https://api.cloudamqp.com/api/instances/<INSTANCE_ID>/firewall \
+      -H "Content-Type: application/json" \
+      -d '{"ip":"10.0.2.0/24","description":"app-servers"}'
+
+known_na_reasons:
+  - id: NA-001
+    reason: |
+      Deployment does not use CloudAMQP managed service.
+    requires_evidence: |
+      Confirm self-hosted or alternative managed broker deployment.

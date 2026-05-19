@@ -1,0 +1,67 @@
+id: NGX-RES-001
+component: nginx
+category: resource-controls
+title: "client_max_body_size must be set to match the largest expected legitimate Galaxy upload"
+description: |
+  Verifies that client_max_body_size is explicitly configured in the Galaxy nginx
+  vhost and is tuned to a value that admits the largest legitimate upload while
+  preventing denial-of-service through oversized request bodies. Without this
+  directive, the nginx default (1MB) blocks legitimate large uploads, or an
+  excessively permissive value enables attackers to exhaust disk space and memory
+  with outsized POST bodies.
+
+severity: medium
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "Galaxy Project — nginx Configuration"
+    url: "https://docs.galaxyproject.org/en/master/admin/nginx.html"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "**/nginx.conf"
+    - "**/nginx/*.conf"
+    - "**/sites-available/*.conf"
+    - "**/conf.d/*.conf"
+  prompt: |
+    Locate client_max_body_size in the Galaxy vhost and assess the configured value.
+
+    COMPLIANT if:
+      - client_max_body_size is explicitly set in the Galaxy server or location block.
+      - The value is appropriate for the deployment: where tusd handles bulk uploads,
+        a modest value (e.g., 10m-50m) on the Galaxy vhost is acceptable since large
+        files go through tusd rather than Galaxy directly.
+      - Where no tusd is deployed and Galaxy accepts direct uploads, the value
+        accommodates the largest expected file without being set to 0 (unlimited).
+
+    NON-COMPLIANT if:
+      - client_max_body_size is not set (relying on the nginx default of 1m,
+        which may block legitimate Galaxy uploads).
+      - client_max_body_size is set to 0 (unlimited) with no alternative
+        upload size control in place.
+
+    NEEDS-HUMAN if:
+      - The appropriate maximum upload size requires input from the deployment
+        operator based on the Galaxy instance's use case and user base.
+
+remediation:
+  summary: |
+    Set client_max_body_size to a value matched to the deployment's largest
+    expected direct upload. If tusd handles large files, a value of 10m-50m
+    for the Galaxy vhost is typically appropriate.
+  template: |
+    server {
+        # With tusd handling large uploads:
+        client_max_body_size 50m;
+
+        # Let tusd handle bulk uploads without body size limit:
+        location /api/upload/resumable_upload/ {
+            client_max_body_size 0;
+            proxy_pass http://localhost:1080/;
+        }
+    }
+
+known_na_reasons: []

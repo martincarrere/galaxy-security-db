@@ -1,0 +1,63 @@
+id: RMQ-CRED-004
+component: rabbitmq
+category: secrets
+title: "RabbitMQ connection credentials must not be hardcoded in configuration or source files"
+description: |
+  Verifies that no AMQP or AMQPS URIs with embedded credentials appear as literals
+  in tracked configuration files. Credentials committed to version control or
+  hardcoded in configuration files are exposed to anyone with repository read access,
+  including former employees, CI build logs, and accidental public mirrors, enabling
+  unauthorized broker access.
+
+severity: high
+
+sources:
+  - type: community
+    authority: medium
+    title: "CloudAMQP — RabbitMQ Production Checklist"
+    url: "https://www.cloudamqp.com/blog/rabbitmq-checklist-for-production-environments-a-complete-guide.html"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "**/*.conf"
+    - "**/*.config"
+    - "**/*.env"
+    - "**/*.properties"
+    - "**/*.yaml"
+    - "**/*.yml"
+    - "**/*.json"
+    - "**/*.xml"
+  prompt: |
+    Scan all files for AMQP or AMQPS URI patterns containing embedded credentials.
+    The pattern to detect: amqp(s)://username:password@host where password is a
+    literal string (not an environment variable reference like $VAR, ${VAR},
+    %(VAR)s, or a template placeholder like <password>).
+
+    COMPLIANT if:
+      - No files contain AMQP/AMQPS URIs with literal embedded credentials.
+      - Files contain only URIs with environment variable references or
+        template placeholders.
+
+    NON-COMPLIANT if:
+      - Any file contains amqp://user:literal-password@host or
+        amqps://user:literal-password@host with a non-placeholder password value.
+
+    NEEDS-HUMAN if:
+      - URIs contain values that look like they could be either literal or
+        generated (e.g., long random strings without obvious variable syntax).
+
+remediation:
+  summary: |
+    Move all AMQP credentials to environment variables or a secrets management
+    system. Reference them at runtime using variable expansion. Install a
+    pre-commit secret scanner (e.g., gitleaks) with rules covering AMQP URI patterns.
+  template: |
+    # Use environment variable injection:
+    AMQP_URI=amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq-host:5672/vhost
+
+    # Or in application config files — reference env vars:
+    rabbitmq.url = ${RABBITMQ_URL}
+
+known_na_reasons: []

@@ -1,0 +1,73 @@
+id: RMQ-PATCH-001
+component: rabbitmq
+category: supply-chain
+title: "RabbitMQ version must track the latest stable patch release on a defined cadence"
+description: |
+  Verifies that the deployed RabbitMQ version is within one minor release of the
+  latest stable release and that a defined patching cadence ensures security
+  fixes are applied within a documented SLA. Running outdated broker versions
+  exposes the deployment to known CVEs in both the broker and the bundled
+  Erlang/OTP runtime. CloudAMQP and self-hosted deployments both require a
+  controlled upgrade process, but the responsibility for initiating upgrades
+  differs by deployment model.
+
+severity: medium
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "RabbitMQ Production Checklist — Keep Up to Date"
+    url: "https://www.rabbitmq.com/docs/production-checklist"
+    section: "#keep-up-to-date"
+    accessed_at: "2026-05-17"
+
+check:
+  type: human_review
+  globs:
+    - "**/Dockerfile"
+    - "**/docker-compose*.yml"
+    - "**/*.tf"
+    - "**/*.spec"
+    - "**/requirements*.txt"
+    - "**/rabbitmq.conf"
+  prompt: |
+    Determine the deployed RabbitMQ version and compare against the latest
+    stable release. Verify that a patching cadence is defined.
+
+    COMPLIANT if:
+      - The deployed RabbitMQ version is the latest patch release of the
+        current stable minor version (e.g., 3.13.x at latest x).
+      - A documented patching SLA exists: security patches applied within
+        30 days of release; critical CVE patches within 7 days.
+      - On CloudAMQP, the instance is set to receive automatic minor/patch
+        upgrades, or a manual upgrade procedure is scheduled and tracked.
+      - Dockerfile or IaC version pins are updated with each release.
+
+    NON-COMPLIANT if:
+      - The deployed version is more than one minor version behind the latest
+        stable release (e.g., running 3.11.x when 3.13.x is current stable).
+      - No patching cadence or SLA is documented.
+      - Version pins in Dockerfile or IaC have not been updated in over 90 days
+        despite new releases being available.
+
+    NEEDS-HUMAN if:
+      - The deployed version must be read from the running broker via
+        rabbitmqctl status or the management API.
+      - On CloudAMQP, upgrade settings require console access to verify.
+
+remediation:
+  summary: |
+    Subscribe to RabbitMQ release announcements and establish a patching SLA.
+    Upgrade Dockerfile and IaC version pins within the SLA window. Test upgrades
+    in a staging environment before applying to production. Consult the
+    RabbitMQ upgrade guide and changelog before each version change.
+  template: |
+    # Check current stable version:
+    # https://www.rabbitmq.com/changelog.html
+
+    # Update Dockerfile pin to latest stable:
+    FROM rabbitmq:3.13-management
+    # Pin to exact version for reproducibility:
+    FROM rabbitmq:3.13.7-management
+
+known_na_reasons: []

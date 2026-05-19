@@ -1,0 +1,56 @@
+id: RMQ-RES-002
+component: rabbitmq
+category: resource-controls
+title: "RabbitMQ disk-free limit must be set well above the default 50 MB"
+description: |
+  Verifies that disk_free_limit is configured to a value substantially above the
+  default 50 MB, which is inadequate for any production workload. Without a
+  meaningful disk-free limit, a broker running the data filesystem to zero free
+  space corrupts its own state and may take cluster persistence with it. Quorum
+  queues significantly expand on-disk footprint compared to classic queues.
+
+severity: medium
+
+sources:
+  - type: vendor_doc
+    authority: strong
+    title: "RabbitMQ Production Checklist — Disk Space"
+    url: "https://www.rabbitmq.com/docs/production-checklist"
+    section: "#resource-limits-disk-space"
+    accessed_at: "2026-05-17"
+
+check:
+  type: file_analysis
+  globs:
+    - "rabbitmq.conf"
+    - "**/rabbitmq.conf"
+    - "**/rabbitmq.conf.d/*.conf"
+  prompt: |
+    Locate disk_free_limit (absolute bytes or memory fraction).
+
+    COMPLIANT if:
+      - disk_free_limit is set to an absolute value >= 1 GB (1000000000).
+      - disk_free_limit.relative is set to a value >= 1.0 (meaning disk free
+        space should be at least as large as configured RAM fraction).
+
+    NON-COMPLIANT if:
+      - disk_free_limit is explicitly set to 50000000 (50 MB, the default) or less.
+      - disk_free_limit is absent (default 50 MB applies).
+
+    NEEDS-HUMAN if:
+      - disk_free_limit uses a memory fraction format (e.g., {mem_relative, 1.0})
+        that requires knowing total RAM to evaluate.
+
+remediation:
+  summary: |
+    Set disk_free_limit to approximately the same value as the configured memory
+    watermark (for a 4 GB RAM node, set to ~4 GB). For quorum-queue-heavy
+    deployments, provision additional disk and set a higher limit.
+  template: |
+    # In rabbitmq.conf — absolute value example for a 4 GB RAM node:
+    disk_free_limit.absolute = 4GB
+
+    # Or using memory fraction (requires 1GB+ free per GB of RAM):
+    disk_free_limit.relative = 1.0
+
+known_na_reasons: []

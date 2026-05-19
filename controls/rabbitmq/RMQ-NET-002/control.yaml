@@ -1,0 +1,62 @@
+id: RMQ-NET-002
+component: rabbitmq
+category: network
+title: "EPMD port 4369 and inter-node distribution port must be blocked from external networks"
+description: |
+  Verifies that host firewall or cloud security group rules block inbound traffic
+  to the Erlang Port Mapper Daemon (EPMD, port 4369) and the inter-node distribution
+  port (default 25672) from any source outside the cluster's trusted network segment.
+  Tens of thousands of publicly reachable EPMD instances have been observed in the
+  wild; any party who can reach the distribution port and obtain the Erlang cookie
+  can issue arbitrary CLI commands against the node.
+
+severity: high
+
+sources:
+  - type: vendor_doc
+    authority: medium
+    title: "RabbitMQ Blog — EPMD Public Exposure"
+    url: "https://www.rabbitmq.com/blog/2024/12/18/epmd-public-exposure"
+    accessed_at: "2026-05-17"
+
+check:
+  type: human_review
+  globs:
+    - "**/iptables*"
+    - "**/nftables*"
+    - "**/ufw*"
+    - "**/*.tf"
+    - "**/security-groups*"
+  prompt: |
+    Verify firewall rules block EPMD (4369) and inter-node distribution (25672)
+    from external networks.
+
+    COMPLIANT if:
+      - Host firewall rules (iptables, nftables, ufw) or cloud security group
+        rules exist that allow ports 4369 and 25672 only from the IP ranges of
+        cluster member nodes, and deny all other sources.
+      - Terraform or IaC files show security group ingress rules scoped to
+        cluster CIDR for these ports.
+
+    NON-COMPLIANT if:
+      - Firewall rules allow 0.0.0.0/0 ingress to port 4369 or 25672.
+      - No firewall rules exist for these ports.
+
+    NEEDS-HUMAN if:
+      - Firewall configuration is managed outside available files (cloud console,
+        network appliance) — requires direct verification against the live
+        firewall rule set.
+
+remediation:
+  summary: |
+    Add explicit DENY rules for ports 4369 and 25672 from all sources except
+    cluster member IP ranges. Apply at both the host firewall and the cloud
+    security group / VPC network policy layers for defense in depth.
+  template: |
+    # iptables example — allow only cluster peers:
+    iptables -A INPUT -p tcp --dport 4369 -s 10.0.1.0/24 -j ACCEPT
+    iptables -A INPUT -p tcp --dport 4369 -j DROP
+    iptables -A INPUT -p tcp --dport 25672 -s 10.0.1.0/24 -j ACCEPT
+    iptables -A INPUT -p tcp --dport 25672 -j DROP
+
+known_na_reasons: []

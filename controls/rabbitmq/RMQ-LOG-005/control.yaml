@@ -1,0 +1,69 @@
+id: RMQ-LOG-005
+component: rabbitmq
+category: logging
+title: "CloudAMQP operational alarms must be configured for memory, disk, and connection thresholds"
+description: |
+  Verifies that CloudAMQP alarm notifications are configured to alert operators
+  before the broker enters a flow-control or blocked state due to resource
+  exhaustion. CloudAMQP provides alarm hooks for memory high-watermark breaches,
+  disk free limit breaches, and connection count thresholds; without these alarms,
+  the first indication of resource pressure is publisher blocking, which is
+  already a service degradation event. This control is specific to deployments
+  using the CloudAMQP managed service.
+
+severity: medium
+
+applicable_when:
+  deployment_modes: ["cloudamqp"]
+
+sources:
+  - type: vendor_doc
+    authority: medium
+    title: "CloudAMQP Documentation — Alarm Notifications"
+    url: "https://www.cloudamqp.com/docs/alarms.html"
+    accessed_at: "2026-05-17"
+
+check:
+  type: human_review
+  prompt: |
+    Review CloudAMQP alarm configurations for each production instance.
+
+    COMPLIANT if:
+      - Memory alarm is configured with a threshold at or below 80% of the
+        instance memory limit, with email or webhook notification.
+      - Disk free alarm is configured with a minimum threshold of at least
+        the value recommended for the instance plan.
+      - Connection count alarm is configured if the instance plan has a
+        connection limit.
+      - Alarm notifications are routed to an on-call channel or paging system
+        (PagerDuty, Opsgenie, Slack, etc.).
+
+    NON-COMPLIANT if:
+      - No alarms are configured on the production instance.
+      - Alarms are configured but notifications go to an unmonitored inbox.
+      - Alarm thresholds are set at 100% (only triggers after the resource
+        limit is already breached).
+
+    NEEDS-HUMAN if:
+      - CloudAMQP console access is required to review alarm configuration —
+        cannot be determined from infrastructure files alone.
+
+remediation:
+  summary: |
+    In the CloudAMQP console, configure alarms for memory, disk, and connection
+    thresholds on each production instance. Route notifications to an on-call
+    channel. Test each alarm by temporarily lowering the threshold and verifying
+    notification delivery before restoring the production threshold.
+  template: |
+    # CloudAMQP API — set a memory alarm (replace values as needed):
+    curl -u <TOKEN>: \
+      -X POST https://api.cloudamqp.com/api/instances/<INSTANCE_ID>/alarms \
+      -H "Content-Type: application/json" \
+      -d '{"type":"memory","value":80,"webhookUrl":"https://hooks.example.com/rmq-alarm"}'
+
+known_na_reasons:
+  - id: NA-001
+    reason: |
+      Deployment does not use CloudAMQP managed service.
+    requires_evidence: |
+      Confirm self-hosted or alternative managed broker deployment.
